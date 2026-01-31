@@ -1,0 +1,236 @@
+{
+  "title": "VNPT Money Chatbot Dashboard",
+  "tags": ["vnpt-money", "chatbot"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "title": "Total Requests",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(vnpt_requests_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          }
+        }
+      }
+    },
+    {
+      "title": "Avg Latency (ms)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "expr": "avg(vnpt_latency_ms_avg) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 500},
+              {"color": "red", "value": 1000}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Active Sessions",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(vnpt_active_sessions) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "blue", "value": null}]
+          }
+        }
+      }
+    },
+    {
+      "title": "Total Errors",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(vnpt_errors_total) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 10}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Request Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "targets": [
+        {
+          "expr": "sum(vnpt_requests_per_minute) or vector(0)",
+          "legendFormat": "Requests/min",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Response Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "targets": [
+        {
+          "expr": "avg(vnpt_latency_ms{quantile=\"0.5\"}) or vector(0)",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "expr": "avg(vnpt_latency_ms{quantile=\"0.95\"}) or vector(0)",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "expr": "avg(vnpt_latency_ms{quantile=\"0.99\"}) or vector(0)",
+          "legendFormat": "P99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "title": "Decision Types Distribution",
+      "type": "piechart",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 14},
+      "targets": [
+        {
+          "expr": "sum by (type) (vnpt_decisions_total)",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Response Rates",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 14},
+      "targets": [
+        {
+          "expr": "avg(vnpt_direct_answer_rate) or vector(0)",
+          "legendFormat": "Direct Answer",
+          "refId": "A"
+        },
+        {
+          "expr": "avg(vnpt_escalation_rate) or vector(0)",
+          "legendFormat": "Escalation",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "title": "Service Health",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 14},
+      "targets": [
+        {
+          "expr": "vnpt_service_health{service=\"neo4j\"}",
+          "legendFormat": "Neo4j",
+          "refId": "A"
+        },
+        {
+          "expr": "vnpt_service_health{service=\"redis\"}",
+          "legendFormat": "Redis",
+          "refId": "B"
+        },
+        {
+          "expr": "vnpt_service_health{service=\"openai\"}",
+          "legendFormat": "OpenAI",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {"text": "DOWN", "color": "red"},
+                "1": {"text": "UP", "color": "green"}
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Confidence Score Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
+      "targets": [
+        {
+          "expr": "avg(vnpt_confidence_avg) or vector(0)",
+          "legendFormat": "Average Confidence",
+          "refId": "A"
+        },
+        {
+          "expr": "avg(vnpt_high_confidence_rate) or vector(0)",
+          "legendFormat": "High Confidence Rate",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    }
+  ]
+}
