@@ -173,6 +173,7 @@ class RetrievedContext:
     topic_name: str
     group_id: str
     group_name: str
+    similarity_score: float = 0.0  # Added for decision making
 
 
 @dataclass

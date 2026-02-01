@@ -5,20 +5,31 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Tuple, Set
 import re
+
 # Add src path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')
+sys.path.insert(0, src_path)
 
 from dotenv import load_dotenv
 load_dotenv()
-from vector_retrieval import VectorRetrieval
+
 from neo4j import GraphDatabase
+from openai import OpenAI
 from schema import ServiceEnum
+
+# Get project root directory
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def load_all_problems() -> List[Dict]:
     """Load all problems from CSV."""
-    data_dir = Path("external_data_v3")
+    data_dir = PROJECT_ROOT / "db" / "import"
     filepath = data_dir / "nodes_problem.csv"
+    
+    if not filepath.exists():
+        # Fallback to external_data_v3
+        data_dir = PROJECT_ROOT / "external_data_v3"
+        filepath = data_dir / "nodes_problem.csv"
     
     with open(filepath, 'r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
@@ -288,19 +299,15 @@ def _infer_service_from_topic(topic: str) -> ServiceEnum:
 
 def test_retrieval_for_all_problems():
     """Test vector retrieval for all problems."""
-   
     
     neo4j_uri = os.getenv("NEO4J_URI")
     neo4j_user = os.getenv("NEO4J_USER")
     neo4j_password = os.getenv("NEO4J_PASSWORD")
     openai_key = os.getenv("OPENAI_API_KEY")
     
-    retrieval = VectorRetrieval(
-        neo4j_uri=neo4j_uri,
-        neo4j_user=neo4j_user,
-        neo4j_password=neo4j_password,
-        openai_api_key=openai_key
-    )
+    # Use Neo4j driver and OpenAI directly
+    driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+    openai_client = OpenAI(api_key=openai_key)
     
     problems = load_all_problems()
     
@@ -335,13 +342,24 @@ def test_retrieval_for_all_problems():
         
         # Test retrieval
         try:
-            results = retrieval.vector_search(title, top_k=3)
+            # Get embedding
+            response = openai_client.embeddings.create(model="text-embedding-3-small", input=[title])
+            query_emb = response.data[0].embedding
+            
+            # Vector search
+            with driver.session() as session:
+                result = session.run("""
+                    CALL db.index.vector.queryNodes('problem_embedding_index', 3, $embedding)
+                    YIELD node, score
+                    RETURN node.id as id, node.title as title, score
+                """, {"embedding": query_emb})
+                results = list(result)
             
             if results:
                 # Check if exact match or high similarity
                 best_result = results[0]
-                best_id = best_result.get('id', '')
-                best_score = best_result.get('score', 0)
+                best_id = best_result['id']
+                best_score = best_result['score']
                 
                 # Check if it matches the expected problem
                 if problem_id in best_id or best_score >= 0.85:
@@ -372,7 +390,7 @@ def test_retrieval_for_all_problems():
             })
             print(f"[ERROR] [{topic}] Error: {e}")
     
-    retrieval.close()
+    driver.close()
     
     print("\n" + "=" * 80)
     print("RETRIEVAL SUMMARY")

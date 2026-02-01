@@ -1,5 +1,5 @@
 """
-Pipeline bao gồm:
+Pipeline orchestrating all components:
 1. Intent Parsing
 2. Constraint-based Retrieval
 3. Multi-signal Ranking
@@ -34,6 +34,7 @@ from response_generator import ResponseGenerator, ResponseGeneratorSimple
 # New modules
 try:
     from redis_manager import RedisManager, get_redis_manager, init_redis
+    from rate_limiter import RateLimiter, RateLimitTier, get_rate_limiter, RateLimitResult
     from monitoring import MonitoringDashboard, get_monitoring_dashboard, init_monitoring
     ADVANCED_FEATURES_AVAILABLE = True
 except ImportError as e:
@@ -65,6 +66,7 @@ class ChatbotPipeline:
         redis_client=None,
         use_llm_parser: bool = True,
         use_llm_generator: bool = True,
+        enable_rate_limiting: bool = True,
         enable_monitoring: bool = True
     ):
         """
@@ -77,6 +79,7 @@ class ChatbotPipeline:
             redis_client: Optional Redis for session management
             use_llm_parser: Use LLM for intent parsing (vs rule-based)
             use_llm_generator: Use LLM for response generation (vs templates)
+            enable_rate_limiting: Enable rate limiting
             enable_monitoring: Enable monitoring dashboard
         """
         # Store references
@@ -90,9 +93,15 @@ class ChatbotPipeline:
         self.session_manager = SessionManager(redis_client)
         
         # Advanced features
+        self.rate_limiter = None
         self.monitoring = None
         
         if ADVANCED_FEATURES_AVAILABLE:
+            # Initialize Rate Limiter
+            if enable_rate_limiting:
+                self.rate_limiter = get_rate_limiter()
+                logger.info("Rate limiting enabled")
+            
             # Initialize Monitoring
             if enable_monitoring:
                 self.monitoring = init_monitoring(neo4j_driver, llm_client)
@@ -124,11 +133,26 @@ class ChatbotPipeline:
         Args:
             user_message: User's input message
             session_id: Session identifier
+            user_tier: User's rate limit tier (FREE/STANDARD/PREMIUM/UNLIMITED)
             
         Returns:
             FormattedResponse with answer and metadata
         """
         start_time = time.time()
+        
+        # Step 0: Rate Limiting Check
+        if self.rate_limiter:
+            rate_result = self.rate_limiter.check_rate_limit(session_id, user_tier)
+            if not rate_result.allowed:
+                logger.warning(f"Rate limit exceeded for session {session_id}")
+                # Record rate limit event in monitoring
+                if self.monitoring:
+                    self.monitoring.metrics.increment("rate_limit_exceeded", {"tier": user_tier})
+                return FormattedResponse(
+                    message=f"Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi {rate_result.retry_after} giây trước khi thử lại.",
+                    source_citation="",
+                    decision_type=DecisionType.ESCALATE_LOW_CONFIDENCE
+                )
         
         # Initialize log entry
         log_entry = self._init_log_entry(session_id, user_message)
@@ -200,7 +224,17 @@ class ChatbotPipeline:
             # Step 6: Response Generation
             response_start = time.time()
             context = decision.top_result.context if decision.top_result else None
-            response = self.response_generator.generate(decision, context, user_message)
+            
+            # Collect all contexts from top results for LLM synthesis
+            all_contexts = []
+            if ranking_output.results:
+                for result in ranking_output.results[:5]:  # Top 5 results
+                    if result.context:
+                        all_contexts.append(result.context)
+            
+            response = self.response_generator.generate(
+                decision, context, user_message, all_contexts=all_contexts
+            )
             log_entry.response_latency_ms = int((time.time() - response_start) * 1000)
             log_entry.final_response = response.message
             log_entry.source_citation = response.source_citation
@@ -215,15 +249,9 @@ class ChatbotPipeline:
             # Record metrics to monitoring dashboard
             if self.monitoring:
                 total_latency = log_entry.total_latency_ms
-                # Total requests (without labels for Prometheus)
-                self.monitoring.metrics.increment("requests_total")
-                # Decision-specific counter
-                decision_key = f"decision_{decision.type.value}"
-                self.monitoring.metrics.increment(decision_key)
-                # Latency histogram
-                self.monitoring.metrics.observe("response_latency", total_latency)
-                # Confidence histogram
-                self.monitoring.metrics.observe("confidence", ranking_output.confidence_score)
+                self.monitoring.metrics.increment("requests_total", labels={"decision": decision.type.value})
+                self.monitoring.metrics.observe("request_latency_ms", total_latency)
+                self.monitoring.metrics.observe("confidence_score", ranking_output.confidence_score)
             
             return response
             
@@ -234,7 +262,7 @@ class ChatbotPipeline:
             
             # Record error in monitoring
             if self.monitoring:
-                self.monitoring.metrics.increment("errors_total")
+                self.monitoring.metrics.increment("errors_total", labels={"type": type(e).__name__})
             
             # Return fallback response
             return FormattedResponse(
@@ -383,6 +411,7 @@ def create_pipeline(
     openai_api_key: str,
     redis_url: Optional[str] = None,
     use_llm: bool = True,
+    enable_rate_limiting: bool = True,
     enable_monitoring: bool = True
 ) -> ChatbotPipeline:
     """
@@ -395,6 +424,7 @@ def create_pipeline(
         openai_api_key: OpenAI API key
         redis_url: Optional Redis URL for session management
         use_llm: Whether to use LLM (vs rule-based fallbacks)
+        enable_rate_limiting: Enable rate limiting feature
         enable_monitoring: Enable monitoring dashboard
         
     Returns:
@@ -434,5 +464,6 @@ def create_pipeline(
         redis_client=redis_client,
         use_llm_parser=use_llm,
         use_llm_generator=use_llm,
+        enable_rate_limiting=enable_rate_limiting,
         enable_monitoring=enable_monitoring
     )

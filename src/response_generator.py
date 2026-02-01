@@ -30,18 +30,49 @@ QUY TẮC:
 7. Không bắt đầu bằng lời chào
 8. Đi thẳng vào nội dung trả lời"""
 
+    SYNTHESIS_PROMPT = """Bạn là trợ lý hỗ trợ khách hàng VNPT Money.
+
+CÂU HỎI: {user_question}
+
+THÔNG TIN THAM KHẢO:
+{contexts}
+
+QUY TẮC:
+1. Nếu thông tin tham khảo có câu trả lời PHÙ HỢP và ĐẦY ĐỦ cho câu hỏi -> Trả lời dựa trên thông tin đó
+2. Nếu KHÔNG có thông tin phù hợp hoặc không đủ -> Trả lời ĐÚNG câu sau:
+   "Mình chưa có thông tin về vấn đề này. Bạn vui lòng liên hệ hotline 18001091 (nhánh 3) để được hỗ trợ trực tiếp nhé!"
+3. KHÔNG được bịa đặt, KHÔNG được trả lời nửa vời kiểu "không có thông tin về X, Y, Z"
+4. KHÔNG liệt kê những gì không biết
+5. Chỉ trả lời ngắn gọn, đi thẳng vào vấn đề
+
+Trả lời:"""
+
     def __init__(self, llm_client):
         self.llm_client = llm_client
         self.model = Config.RESPONSE_GENERATOR_MODEL
         self.temperature = Config.RESPONSE_GENERATOR_TEMPERATURE
         self.max_tokens = Config.RESPONSE_GENERATOR_MAX_TOKENS
     
-    def generate(self, decision: Decision, context: Optional[RetrievedContext], user_question: str) -> FormattedResponse:
-        if decision.type == DecisionType.DIRECT_ANSWER:
-            return self._generate_direct_answer(decision, context, user_question)
-        elif decision.type == DecisionType.ANSWER_WITH_CLARIFY:
-            return self._generate_answer_with_clarify(decision, context, user_question)
-        elif decision.type == DecisionType.CLARIFY_REQUIRED:
+    def generate(
+        self, 
+        decision: Decision, 
+        context: Optional[RetrievedContext], 
+        user_question: str,
+        all_contexts: Optional[List[RetrievedContext]] = None
+    ) -> FormattedResponse:
+        # Nếu có nhiều contexts và LLM available, dùng LLM tổng hợp
+        if decision.type in [DecisionType.DIRECT_ANSWER, DecisionType.ANSWER_WITH_CLARIFY]:
+            if all_contexts and len(all_contexts) > 0:
+                return self._generate_synthesized_answer(decision, all_contexts, user_question)
+            elif context:
+                return self._generate_direct_answer(decision, context, user_question)
+            else:
+                return self._generate_escalation_low_confidence()
+        
+        if decision.type == DecisionType.CLARIFY_REQUIRED:
+            # Thử dùng LLM tổng hợp từ top contexts nếu có
+            if all_contexts and len(all_contexts) >= 2:
+                return self._generate_synthesized_answer(decision, all_contexts, user_question)
             return self._generate_clarification(decision, user_question)
         elif decision.type == DecisionType.ESCALATE_PERSONAL:
             return self._generate_escalation_personal(user_question)
@@ -54,6 +85,72 @@ QUY TẮC:
         else:
             logger.error(f"Unknown decision type: {decision.type}")
             return self._generate_escalation_low_confidence()
+    
+    def _generate_synthesized_answer(
+        self, 
+        decision: Decision, 
+        contexts: List[RetrievedContext], 
+        user_question: str
+    ) -> FormattedResponse:
+        """Dùng LLM tổng hợp câu trả lời từ nhiều contexts."""
+        try:
+            # Build context string từ top 3-5 contexts
+            context_parts = []
+            for i, ctx in enumerate(contexts[:5]):
+                part = f"--- Nguồn {i+1}: {ctx.problem_title or 'N/A'} ---\n"
+                if ctx.answer_content:
+                    part += ctx.answer_content
+                if ctx.answer_steps:
+                    steps = "\n".join(f"  {j+1}. {s}" for j, s in enumerate(ctx.answer_steps))
+                    part += f"\nCác bước:\n{steps}"
+                if ctx.answer_notes:
+                    part += f"\nLưu ý: {ctx.answer_notes}"
+                context_parts.append(part)
+            
+            contexts_text = "\n\n".join(context_parts)
+            
+            prompt = self.SYNTHESIS_PROMPT.format(
+                user_question=user_question,
+                contexts=contexts_text
+            )
+            
+            response_text = self._call_llm_synthesis(prompt)
+            
+            # Validate response
+            if not response_text or len(response_text) < 20:
+                logger.warning("LLM synthesis response too short, falling back")
+                if contexts[0]:
+                    return self._generate_direct_answer(decision, contexts[0], user_question)
+                return self._generate_escalation_low_confidence()
+            
+            return FormattedResponse(
+                message=response_text,
+                source_citation="",
+                decision_type=DecisionType.DIRECT_ANSWER
+            )
+            
+        except Exception as e:
+            logger.error(f"Synthesis failed: {e}")
+            # Fallback to first context
+            if contexts and contexts[0]:
+                return self._generate_direct_answer(decision, contexts[0], user_question)
+            return self._generate_escalation_low_confidence()
+    
+    def _call_llm_synthesis(self, prompt: str) -> str:
+        """Call LLM for synthesis with specific settings."""
+        try:
+            response = self.llm_client.chat.completions.create(
+                model=self.model,
+                temperature=0.3,  # Lower temperature for more factual response
+                max_tokens=self.max_tokens,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error(f"LLM synthesis call failed: {e}")
+            raise
     
     def _generate_direct_answer(self, decision: Decision, context: Optional[RetrievedContext], user_question: str) -> FormattedResponse:
         if not context:
@@ -145,7 +242,13 @@ Mình sẽ cố gắng hỗ trợ bạn tốt nhất!"""
 class ResponseGeneratorSimple:
     """Response generator đơn giản không dùng LLM."""
     
-    def generate(self, decision: Decision, context: Optional[RetrievedContext], user_question: str) -> FormattedResponse:
+    def generate(
+        self, 
+        decision: Decision, 
+        context: Optional[RetrievedContext], 
+        user_question: str,
+        all_contexts: Optional[List[RetrievedContext]] = None
+    ) -> FormattedResponse:
         if decision.type == DecisionType.DIRECT_ANSWER and context:
             message = context.answer_content
             if context.answer_steps:

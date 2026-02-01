@@ -3,12 +3,17 @@ import logging
 from chainlit.cli import run_chainlit
 import chainlit as cl
 from dotenv import load_dotenv
-import redis
 
 from pipeline import create_pipeline, ChatbotPipeline
 from schema import DecisionType
 
-# Try to import monitoring
+# Try to import advanced features
+try:
+    from rate_limiter import get_rate_limiter, RateLimitTier
+    RATE_LIMITER_AVAILABLE = True
+except ImportError:
+    RATE_LIMITER_AVAILABLE = False
+
 try:
     from monitoring import get_monitoring_dashboard
     MONITORING_AVAILABLE = True
@@ -25,32 +30,16 @@ logger = logging.getLogger(__name__)
 
 pipeline: ChatbotPipeline = None
 last_responses = {}
-active_sessions = set()  # Track active sessions locally
-redis_client = None  # Redis client for metrics
 
 
-def get_redis_client():
-    """Get Redis client for metrics."""
-    global redis_client
-    if redis_client is None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        try:
-            redis_client = redis.from_url(redis_url, decode_responses=True)
-            redis_client.ping()
-        except Exception as e:
-            logger.warning(f"Could not connect to Redis: {e}")
-            redis_client = None
-    return redis_client
-
-
-def update_active_sessions_metric():
-    """Update active sessions metric in Redis."""
-    client = get_redis_client()
-    if client:
-        try:
-            client.set("metrics:gauge:active_sessions", len(active_sessions))
-        except Exception as e:
-            logger.warning(f"Failed to update active sessions metric: {e}")
+def get_user_tier(session_id: str) -> str:
+    """
+    Get user's rate limit tier based on session or authentication.
+    In a real app, this would check user authentication/subscription level.
+    """
+    # Default to STANDARD tier for all users
+    # This can be extended to check user authentication and subscription
+    return "STANDARD"
 
 
 def get_pipeline() -> ChatbotPipeline:
@@ -66,8 +55,9 @@ def get_pipeline() -> ChatbotPipeline:
         redis_url = os.getenv("REDIS_URL")
         use_llm = os.getenv("USE_LLM", "true").lower() == "true"
         
-        # Monitoring enabled by default
-        enable_monitoring = os.getenv("ENABLE_MONITORING", "true").lower() == "true"
+        # Advanced features flags - disabled by default for stability
+        enable_rate_limiting = os.getenv("ENABLE_RATE_LIMITING", "false").lower() == "true"
+        enable_monitoring = os.getenv("ENABLE_MONITORING", "false").lower() == "true"
         
         if not openai_api_key:
             logger.warning("OPENAI_API_KEY chưa được cấu hình")
@@ -80,10 +70,13 @@ def get_pipeline() -> ChatbotPipeline:
             openai_api_key=openai_api_key or "",
             redis_url=redis_url,
             use_llm=use_llm,
+            enable_rate_limiting=enable_rate_limiting,
             enable_monitoring=enable_monitoring
         )
         
         logger.info("Pipeline đã sẵn sàng")
+        if enable_rate_limiting:
+            logger.info("Rate limiting: ENABLED")
         if enable_monitoring:
             logger.info("Monitoring: ENABLED")
     
@@ -94,10 +87,6 @@ def get_pipeline() -> ChatbotPipeline:
 async def on_chat_start():
     session_id = cl.user_session.get("id")
     cl.user_session.set("session_id", session_id)
-    
-    # Track active session
-    active_sessions.add(session_id)
-    update_active_sessions_metric()
     
     welcome_message = """Xin chào! Mình là trợ lý ảo của **VNPT Money**.
 
@@ -113,7 +102,7 @@ Mình có thể hỗ trợ bạn về:
 Bạn cần hỗ trợ gì ạ?"""
     
     await cl.Message(content=welcome_message).send()
-    logger.info(f"Phiên mới: {session_id} (Active sessions: {len(active_sessions)})")
+    logger.info(f"Phiên mới: {session_id}")
 
 
 @cl.on_message
@@ -247,14 +236,10 @@ async def on_chat_end():
     session_id = cl.user_session.get("session_id")
     
     if session_id:
-        # Remove from active sessions
-        active_sessions.discard(session_id)
-        update_active_sessions_metric()
-        
         try:
             bot = get_pipeline()
             bot.clear_session(session_id)
-            logger.info(f"Kết thúc phiên: {session_id} (Active sessions: {len(active_sessions)})")
+            logger.info(f"Kết thúc phiên: {session_id}")
         except Exception as e:
             logger.error(f"Lỗi xóa phiên: {e}")
 

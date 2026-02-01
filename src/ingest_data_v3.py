@@ -43,6 +43,18 @@ class DataIngestion:
             session.run("MATCH (n) DETACH DELETE n")
         logger.info("Database đã xóa")
     
+    def cleanup_lowercase_labels(self):
+        """Xóa các node có label viết thường bị duplicate (group, topic, problem, answer)."""
+        logger.info("Dọn dẹp các node có label viết thường...")
+        lowercase_labels = ["group", "topic", "problem", "answer"]
+        with self.driver.session() as session:
+            for label in lowercase_labels:
+                result = session.run(f"MATCH (n:{label}) DETACH DELETE n RETURN count(n) as deleted")
+                deleted = result.single()["deleted"]
+                if deleted > 0:
+                    logger.info(f"Đã xóa {deleted} node có label '{label}'")
+        logger.info("Hoàn thành dọn dẹp labels viết thường")
+    
     def create_constraints(self):
         logger.info("Tạo constraints và indexes...")
         constraints = [

@@ -486,12 +486,12 @@ class TextNormalizer:
         "k": "không", "ko": "không", "khong": "không", "kg": "không", "kh": "không",
         "dc": "được", "đc": "được", "duoc": "được", "dk": "được",
         "r": "rồi", "roi": "rồi",
-        "cx": "cũng", "cung": "cũng",
-        "vs": "với", "voi": "với", "v": "với",
-        "j": "gì", "gi": "gì", "z": "gì",
-        "d": "vậy", "v": "vậy", "vay": "vậy",
-        "ns": "nói", "noi": "nói",
-        "lm": "làm", "lam": "làm",
+        "cx": "cũng",  # Removed "cung" - breaks "nhà cung cấp"
+        "vs": "với", "voi": "với",  # Removed "v" - too short and ambiguous
+        "j": "gì",  # Removed "gi", "z" - breaks "digilife", etc.
+        "d": "vậy",  # Removed "v", "vay" - breaks "vay tiêu dùng"
+        "ns": "nói",  # Removed "noi" - breaks "noi dia" -> "nội địa"
+        "lm": "làm",  # Removed "lam" - keep in NO_ACCENT_MAP only
         "sao": "sao", "ntn": "như thế nào", "nhu the nao": "như thế nào",
         
         # Hành động phổ biến
@@ -533,10 +533,14 @@ class TextNormalizer:
         "shb": "SHB",
         "msb": "MSB",
         
-        # Từ không dấu phổ biến
-        "vi": "vì", "la": "là", "ma": "mà", "da": "đã",
+        # Từ không dấu phổ biến - REMOVED short words that cause false positives
+        # "vi": "vì",  # breaks "dịch vụ" etc.
+        # "la": "là",  # breaks "digilife", "lazada" etc.
+        # "ma": "mà",  # breaks many words
+        # "da": "đã",  # breaks "lazada", "sendo" etc.
         "chua": "chưa", "se": "sẽ", "dang": "đang",
-        "bao": "báo", "can": "cần", "muon": "muốn",
+        # "bao": "báo",  # breaks "thuê bao", "bảo hiểm" etc.
+        "can": "cần", "muon": "muốn",
         "the": "thẻ", "tien": "tiền", "phi": "phí",
         "dien": "điện", "nuoc": "nước",
         "cach": "cách", "huong": "hướng",
@@ -567,18 +571,20 @@ class TextNormalizer:
         "huong dan": "hướng dẫn",
         "khong duoc": "không được",
         
-        # Các từ đơn
+        # Các từ đơn - REMOVED short words that cause false positives
         "khong": "không",
         "duoc": "được",
-        "chua": "chưa",
+        # "chua": "chưa",  # Keep - usually safe
         "roi": "rồi",
-        "gi": "gì",
-        "vay": "vậy",
+        # "gi": "gì",  # REMOVED - breaks "digilife", "login", etc.
+        # "vay": "vậy",  # REMOVED - breaks "khoản vay", "vay tiêu dùng"
         "lam": "làm",
         "nhu the nao": "như thế nào",
         "the nao": "thế nào",
         "vi sao": "vì sao",
         "tai sao": "tại sao",
+        " gi ": " gì ",  # Only standalone "gi" with spaces
+        " gi?": " gì?",  # Common ending pattern
         
         # Dịch vụ cụ thể
         "tien dien": "tiền điện",
@@ -600,6 +606,175 @@ class TextNormalizer:
         "bi tu choi": "bị từ chối",
         "qua han": "quá hạn",
         "het han": "hết hạn",
+        
+        # Thẻ ATM & liên kết
+        "noi dia": "nội địa",
+        "the atm": "thẻ ATM",
+        "the atm noi dia": "thẻ ATM nội địa",
+        "lien ket ngan hang": "liên kết ngân hàng",
+        "khong lien ket duoc": "không liên kết được",
+        
+        # Chuyển tiền & giao dịch
+        "chua thay": "chưa thấy",
+        "tru tien": "trừ tiền",
+        "chua nhan": "chưa nhận",
+        "da nhan": "đã nhận",
+        "chuyen sang": "chuyển sang",
+        "chua tru": "chưa trừ",
+        "da tru": "đã trừ",
+        "ben nay": "bên này",
+        "ben kia": "bên kia",
+        
+        # Trạng thái phổ biến
+        "dang xu ly": "đang xử lý",
+        "da xu ly": "đã xử lý",
+        "chua xu ly": "chưa xử lý",
+        "bi loi": "bị lỗi",
+        "khong thanh cong": "không thành công",
+        "that bai": "thất bại",
+        "dang cho": "đang chờ",
+        
+        # Từ đơn phổ biến (cẩn thận với false positive)
+        "moi": "mới",
+        "nhung": "nhưng",
+        "cung": "cũng",
+        "nua": "nữa",
+        "dau": "đâu",
+        "sao lai": "sao lại",
+        "the nay": "thế này",
+        "nhu vay": "như vậy",
+        
+        # Hỏi đáp
+        "lam sao": "làm sao",
+        "nhu nao": "như nào",
+        "o dau": "ở đâu",
+        "khi nao": "khi nào",
+        "bao lau": "bao lâu",
+        "bao nhieu": "bao nhiêu",
+        
+        # Nạp/rút tiền
+        "nap tien": "nạp tiền",
+        "rut tien": "rút tiền",
+        "chua nap": "chưa nạp",
+        "da nap": "đã nạp",
+        "nap nham": "nạp nhầm",
+        "rut nham": "rút nhầm",
+        "chuyen nham": "chuyển nhầm",
+        
+        # OTP & bảo mật
+        "khong nhan duoc": "không nhận được",
+        "chua nhan duoc": "chưa nhận được",
+        "gui lai": "gửi lại",
+        "ma otp": "mã OTP",
+        "xac nhan": "xác nhận",
+        "xac thuc": "xác thực",
+        
+        # Tài khoản
+        "tai khoan cua toi": "tài khoản của tôi",
+        "so du": "số dư",
+        "kiem tra": "kiểm tra",
+        "cap nhat": "cập nhật",
+        "thay doi": "thay đổi",
+        "dang nhap": "đăng nhập",
+        "dang xuat": "đăng xuất",
+        
+        # Thanh toán
+        "thanh toan": "thanh toán",
+        "chua thanh toan": "chưa thanh toán",
+        "da thanh toan": "đã thanh toán",
+        "phi dich vu": "phí dịch vụ",
+        "phi giao dich": "phí giao dịch",
+        
+        # Hỗ trợ
+        "ho tro": "hỗ trợ",
+        "lien he": "liên hệ",
+        "tong dai": "tổng đài",
+        "hotline": "hotline",
+        
+        # Từ đơn phổ biến (cẩn thận với substring)
+        "toi": "tôi",
+        " de ": " để ",
+        " vao ": " vào ",
+        " cho ": " cho ",
+        " tu ": " từ ",
+        " den ": " đến ",
+        " cua ": " của ",
+        " cu ": " cứ ",
+        " la ": " là ",
+        " co ": " có ",
+        " bi ": " bị ",
+        " di ": " đi ",
+        " ve ": " về ",
+        " ra ": " ra ",
+        
+        # Cụm từ quan trọng
+        "de nap": "để nạp",
+        "de rut": "để rút",
+        "de chuyen": "để chuyển",
+        "de thanh toan": "để thanh toán",
+        "de dang ky": "để đăng ký",
+        "vao tai khoan": "vào tài khoản",
+        "tu tai khoan": "từ tài khoản",
+        "cua toi": "của tôi",
+        "cu bao": "cứ báo",
+        "cu hien": "cứ hiện",
+        
+        # Kiểm tra & xem
+        "kiem tra so du": "kiểm tra số dư",
+        "xem so du": "xem số dư",
+        "xem lich su": "xem lịch sử",
+        "lich su giao dich": "lịch sử giao dịch",
+        
+        # Học phí
+        "hoc phi": "học phí",
+        "thu phi": "thu phí",
+        "dong hoc phi": "đóng học phí",
+        "nop hoc phi": "nộp học phí",
+        "phi hoc": "phí học",
+        "phi dai hoc": "phí đại học",
+        
+        # Dịch vụ công
+        "nop phat": "nộp phạt",
+        "phat giao thong": "phạt giao thông",
+        "nop phat giao thong": "nộp phạt giao thông",
+        "nop thue": "nộp thuế",
+        "le phi": "lệ phí",
+        "truoc ba": "trước bạ",
+        "dich vu cong": "dịch vụ công",
+        
+        # Mua vé
+        "mua ve": "mua vé",
+        "ve tau": "vé tàu",
+        "ve may bay": "vé máy bay",
+        "ve xe": "vé xe",
+        "dat ve": "đặt vé",
+        "huy ve": "hủy vé",
+        "hoan ve": "hoàn vé",
+        "dat phong": "đặt phòng",
+        " tau": " tàu",
+        
+        # Bảo hiểm
+        "bao hiem": "bảo hiểm",
+        "phi bao hiem": "phí bảo hiểm",
+        "hop dong bao hiem": "hợp đồng bảo hiểm",
+        
+        # Di động
+        "di dong": "di động",
+        "tra sau": "trả sau",
+        "goi cuoc": "gói cước",
+        
+        # Học phí (thêm)
+        " hoc": " học",
+        
+        # Phương tiện
+        "phuong tien": "phương tiện",
+        "phuong tien di chuyen": "phương tiện di chuyển",
+        "di chuyen": "di chuyển",
+        
+        # Nhà cung cấp
+        "nha cung cap": "nhà cung cấp",
+        "cung cap nuoc": "cung cấp nước",
+        "danh sach": "danh sách",
     }
     
     @classmethod
@@ -684,11 +859,29 @@ class IntentParserLocal:
             "quyền của vnpt smartotp", "nghĩa vụ vnpt smartotp",
             "quy định smartotp", "hạn mức giao dịch smartotp",
             "phương thức xác thực smartotp", "xác thực smartotp",
+            # CRITICAL: SmartOTP nghĩa vụ VNPT - must match before OTP
+            "nghĩa vụ của vnpt đối với khách hàng khi cung cấp dịch vụ smartotp",
+            "nghĩa vụ của vnpt khi cung cấp dịch vụ smartotp",
+            "nghĩa vụ vnpt đối với khách hàng smartotp", "dịch vụ smartotp",
             # Thanh toán hóa đơn tự động
             "thanh toán hóa đơn tự động", "trích nợ hóa đơn",
             "điều kiện điều khoản thanh toán", "sửa đổi bổ sung điều khoản",
-            # Giao dịch quốc tế
+            # Giao dịch quốc tế - COMPREHENSIVE KEYWORDS
             "giao dịch quốc tế", "thanh toán quốc tế", "tắt bật dịch vụ", "hủy dịch vụ quốc tế",
+            "dịch vụ giao dịch quốc tế", "phạm vi giao dịch quốc tế",
+            "đối tượng giao dịch quốc tế", "quy trình tắt bật", "tắt/bật",
+            "thu thập xử lý dữ liệu giao dịch quốc tế", "nghĩa vụ cung cấp thông tin",
+            "quản lý nguồn tiền giao dịch quốc tế", "trách nhiệm thanh toán giao dịch quốc tế",
+            "từ chối xử lý giao dịch quốc tế", "hạn mức biểu phí giao dịch quốc tế",
+            "biểu phí dịch vụ giao dịch quốc tế", "hạn mức dịch vụ giao dịch quốc tế",
+            "sai sót giao dịch quốc tế", "phát hiện sai sót giao dịch",
+            # SPECIFIC TITLES for giao dịch quốc tế
+            "dịch vụ giao dịch quốc tế áp dụng cho những đối tượng",
+            "nghĩa vụ cung cấp thông tin và phạm vi vnpt thu thập",
+            "quy định về quản lý nguồn tiền và trách nhiệm thanh toán",
+            "các trường hợp vnpt được quyền từ chối xử lý giao dịch",
+            "quy định về hạn mức và biểu phí dịch vụ giao dịch",
+            "quy trình và nghĩa vụ của khách hàng khi phát hiện sai sót",
             # Liên kết thanh toán điều khoản
             "thỏa thuận liên kết", "hủy liên kết thanh toán", "đối tác liên kết",
             # Hành vi vi phạm
@@ -716,6 +909,9 @@ class IntentParserLocal:
             # Hoàn trả tiền
             "hoàn trả tiền", "các trường hợp được hoàn trả",
             "giải quyết khiếu nại sản phẩm",
+            # Giới hạn trách nhiệm - VNPT-Media
+            "giới hạn trách nhiệm của vnpt-media", "giới hạn trách nhiệm vnpt-media",
+            "trách nhiệm của vnpt-media đối với hàng hóa", "quy trình sử dụng",
             # Trách nhiệm và nghĩa vụ specific
             "trách nhiệm và nghĩa vụ của vnpt", "trách nhiệm của khách hàng",
             "trách nhiệm cung cấp thông tin", "trách nhiệm xác thực dữ liệu",
@@ -806,6 +1002,11 @@ class IntentParserLocal:
             "nạp tiền điện thoại", "nạp điện thoại", "nạp tiền", "top up", "topup",
             "nạp nhầm", "nhà mạng", "thuê bao", "nạp tiền tự động",
             "thuê bao chưa nhận", "tài khoản bị trừ tiền nhưng thuê bao",
+            # Lỗi nạp tiền
+            "trừ tiền nhưng thuê bao chưa nhận", "bị trừ tiền nhưng thuê bao",
+            "tại sao tài khoản bị trừ tiền nhưng thuê bao",
+            # SPECIFIC TITLE
+            "tại sao tài khoản bị trừ tiền nhưng thuê bao chưa nhận được",
         ]),
         
         # --- 3.2 Tiền điện ---
@@ -817,6 +1018,10 @@ class IntentParserLocal:
         # --- 3.3 Tiền nước ---
         (ServiceEnum.TIEN_NUOC, [
             "tiền nước", "hóa đơn nước", "nhà cung cấp nước", "gạch nợ nước",
+            "danh sách nhà cung cấp nước", "nhà cung cấp nước chưa đầy đủ",
+            "lưu mẫu hóa đơn tiền nước", "thời gian gạch nợ hóa đơn nước",
+            # SPECIFIC TITLE
+            "danh sách nhà cung cấp nước chưa đầy đủ?",
         ]),
         
         # --- 3.4 Điện nước khác ---
@@ -831,11 +1036,24 @@ class IntentParserLocal:
             "tra cứu hợp đồng bảo hiểm", "thanh toán phí bảo hiểm", "bảo hiểm định kỳ",
         ]),
         
-        # --- 3.6 Vay ---
+        # --- 3.6 Vay - MUST BE BEFORE THANH_TOAN (priority matching)
         (ServiceEnum.VAY, [
             "vay", "khoản vay", "vay tiêu dùng", "gạch nợ vay", "hợp đồng vay",
             "fe credit", "msb credit", "aeon finance", "mirae asset",
             "nhập sai số hợp đồng vay",
+            # CRITICAL: Specific vay keywords - must match BEFORE thanh_toan
+            "thanh toán khoản vay", "thanh toán vay tiêu dùng", "thanh toán vay",
+            "hướng dẫn thanh toán khoản vay", "thanh toán vay bao lâu",
+            "phí thanh toán vay", "phí thanh toán vay tiêu dùng",
+            "nhập sai số hợp đồng vay có lấy lại tiền",
+            # Additional vay terms to ensure priority
+            "khoản vay tiêu dùng", "vay bao lâu", "được gạch nợ",
+            "số hợp đồng vay", "hợp đồng vay có lấy lại",
+            # SPECIFIC TITLES - EXACT MATCH
+            "hướng dẫn thanh toán khoản vay tiêu dùng",
+            "thanh toán vay bao lâu thì được gạch nợ",
+            "nhập sai số hợp đồng vay có lấy lại tiền được không",
+            "phí thanh toán vay tiêu dùng",
         ]),
         
         # --- 3.7 Tiết kiệm ---
@@ -848,6 +1066,8 @@ class IntentParserLocal:
             "học phí", "đóng học phí", "vnedu", "phí đại học", "học phí ssc",
             "học sinh", "biên lai học phí", "thu phí đh", "thu phí cđ",
             "nộp phí xét tuyển", "phí xét tuyển đại học", "học mãi", "dtsoft", "asc",
+            # Thêm keywords
+            "phí học", "thu phí học", "nộp học phí",
         ]),
         
         # --- 3.9 Mua vé (cần bao gồm phương tiện di chuyển) ---
@@ -877,7 +1097,18 @@ class IntentParserLocal:
         (ServiceEnum.GIAI_TRI, [
             "mytv", "vtvcab", "truyền hình", "k+", "truyền hình k",
             "vietlott", "vòng quay", "may mắn", "mua vé vietlott", "nhận thưởng",
-            "dealtoday", "du hí", "digilife", "gói cước digilife",
+            "dealtoday", "du hí",
+            # DigiLife - COMPREHENSIVE KEYWORDS - MUST MATCH BEFORE THANH_TOAN
+            "digilife", "gói cước digilife", "dịch vụ digilife",
+            "hướng dẫn sử dụng digilife", "lịch sử giao dịch digilife",
+            "lỗi thanh toán digilife", "digilife bị treo",
+            "digilife hỗ trợ nguồn tiền", "nguồn tiền digilife",
+            "gói cước digilife bị treo", "giao dịch digilife",
+            # SPECIFIC TITLES for DigiLife - ALL 4 PROBLEMS
+            "hướng dẫn sử dụng dịch vụ gói cước digilife",
+            "kiểm tra lịch sử giao dịch gói cước digilife",
+            "lỗi thanh toán gói cước digilife bị treo",
+            "dịch vụ gói cước digilife hỗ trợ nguồn tiền nào",
             # Vietlott specific
             "mua vé hộ người khác", "mua vé hộ", "vé hộ người khác",
             "thời gian ngừng bán vé", "ngừng bán vé", "ngừng bán vé trong ngày",
@@ -959,6 +1190,9 @@ class IntentParserLocal:
         (ServiceEnum.UNG_DUNG, [
             "ứng dụng", "app", "tải ứng dụng", "cập nhật ứng dụng", "download", "phiên bản",
             "vnpt money app", "tải vnpt money",
+            # Các tính năng của ứng dụng
+            "kiểm tra số dư", "xem số dư", "số dư tài khoản", "số dư",
+            "lịch sử giao dịch", "xem lịch sử",
         ]),
     ]
     

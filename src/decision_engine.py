@@ -67,6 +67,24 @@ class DecisionEngine:
                 escalation_reason="Không tìm thấy thông tin phù hợp"
             )
         
+        # === CRITICAL FIX: High similarity override ===
+        # Nếu top result có similarity rất cao (>= 0.95), đây là exact/near-exact match
+        # Trả lời trực tiếp bất kể gap (vì có thể có duplicate entries)
+        top_result = ranking.results[0]
+        top_similarity = top_result.context.similarity_score if top_result.context else 0
+        
+        # Fallback: check từ candidates nếu context không có
+        if top_similarity == 0 and hasattr(ranking, 'results') and ranking.results:
+            # Similarity thường được lưu trong context
+            pass
+        
+        if top_similarity >= 0.95:
+            logger.info(f"Decision: DIRECT_ANSWER (high similarity={top_similarity:.3f} - exact match)")
+            return Decision(
+                type=DecisionType.DIRECT_ANSWER,
+                top_result=top_result
+            )
+        
         # === CRITICAL: Intelligent Decision Making ===
         # Kết hợp nhiều yếu tố để quyết định:
         # 1. Confidence score (từ ranking algorithm)
@@ -74,6 +92,16 @@ class DecisionEngine:
         # 3. Top result RRF score (quality của kết quả tốt nhất)
         
         top_rrf = ranking.results[0].rrf_score if ranking.results else 0
+        
+        # === IMPORTANT: Confidence-first approach ===
+        # Nếu confidence đủ cao (>= 0.65), trả lời trực tiếp
+        # Gap thấp không có nghĩa là kết quả sai, có thể chỉ là nhiều câu hỏi tương tự
+        if ranking.confidence_score >= 0.65:
+            logger.info(f"Decision: DIRECT_ANSWER (high confidence={ranking.confidence_score:.3f})")
+            return Decision(
+                type=DecisionType.DIRECT_ANSWER,
+                top_result=ranking.results[0]
+            )
         
         # Tính "certainty score" - độ chắc chắn tổng hợp
         # Confidence cao + Gap cao = Rất chắc chắn
@@ -83,11 +111,11 @@ class DecisionEngine:
         # Normalize gap: 0.15 -> 1.0, 0.0 -> 0.0
         normalized_gap = min(ranking.score_gap / self.gap_threshold, 1.0)
         
-        # Tính certainty score
+        # Tính certainty score - ĐÃ ĐIỀU CHỈNH: giảm trọng số của gap
         certainty = (
-            ranking.confidence_score * 0.6 +  # Confidence là yếu tố chính
-            normalized_gap * 0.3 +             # Gap cũng quan trọng
-            min(top_rrf * 2, 1.0) * 0.1        # RRF score boost
+            ranking.confidence_score * 0.75 +  # Confidence là yếu tố CHÍNH (tăng từ 0.6)
+            normalized_gap * 0.15 +             # Gap ít quan trọng hơn (giảm từ 0.3)
+            min(top_rrf * 2, 1.0) * 0.10        # RRF score boost
         )
         
         logger.info(
@@ -96,10 +124,10 @@ class DecisionEngine:
             f"rrf={top_rrf:.3f}, certainty={certainty:.3f}"
         )
         
-        # Decision thresholds based on certainty
-        CERTAINTY_HIGH = 0.65     # Rất chắc -> Direct answer (giảm từ 0.70)
-        CERTAINTY_MEDIUM = 0.50   # Khá chắc -> Answer with clarify (giảm từ 0.55)
-        CERTAINTY_LOW = 0.42      # Threshold escalate (giảm từ 0.48)
+        # Decision thresholds based on certainty - ĐÃ ĐIỀU CHỈNH
+        CERTAINTY_HIGH = 0.55     # Rất chắc -> Direct answer (giảm từ 0.65)
+        CERTAINTY_MEDIUM = 0.45   # Khá chắc -> Answer with clarify (giảm từ 0.50)
+        CERTAINTY_LOW = 0.35      # Threshold escalate (giảm từ 0.42)
         # Dưới CERTAINTY_LOW -> Escalate
         
         if certainty < CERTAINTY_LOW:

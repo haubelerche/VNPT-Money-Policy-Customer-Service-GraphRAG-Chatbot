@@ -1,6 +1,6 @@
 # VNPT Money Policy Customer Service GraphRAG Chatbot 
 # Dự án thực tập cá nhân 
-> **Thời gian thực hiện**: 15/12/2025 - 01/02/2026 | **Phiên bản**: 3.0
+> **Thời gian thực hiện**: 15/12/2025 - 01/02/2026 | **Phiên bản**: 3.1
 
 ---
 
@@ -9,6 +9,14 @@
 1. [Giới thiệu và Mục đích](#1-giới-thiệu-và-mục-đích)
 2. [Kiến trúc hệ thống](#2-kiến-trúc-hệ-thống)
 3. [Các thuật toán sử dụng](#3-các-thuật-toán-sử-dụng)
+   - 3.1 Hybrid Intent Parsing
+   - 3.2 Constraint-based Retrieval
+   - 3.3 Multi-Signal Ranking (RRF)
+   - 3.4 Certainty Score
+   - 3.5 Decision Logic
+   - 3.6 LLM Synthesis *(NEW)*
+   - 3.7 Embedding Caching
+   - 3.8 Vietnamese Text Normalization *(NEW)*
 4. [Luồng xử lý (Pipeline Flow)](#4-luồng-xử-lý-pipeline-flow)
 5. [Chi tiết từng Module](#5-chi-tiết-từng-module)
 6. [Monitoring & Metrics](#6-monitoring--metrics)
@@ -23,7 +31,9 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 
 **Điểm nổi bật của hệ thống:**
 - **Grounded Responses**: Chỉ trả lời dựa trên knowledge base đã được kiểm duyệt, không hallucination
+- **LLM Synthesis**: Tổng hợp câu trả lời từ nhiều nguồn contexts thay vì single-context
 - **Intelligent Escalation**: Tự động chuyển tổng đài khi không chắc chắn thay vì đoán sai
+- **Vietnamese Text Normalization**: Xử lý tốt input có dấu và không dấu
 - **Certainty-based Decision**: Sử dụng "Certainty Score" kết hợp nhiều yếu tố để quyết định chính xác
 - **Real-time Monitoring**: Dashboard Grafana theo dõi hiệu suất và sức khỏe hệ thống
 
@@ -297,6 +307,8 @@ RETURN p.*, a.*, t.*, g.*
 | **Graph Distance** | Điểm dựa trên topic/group matching | 0.6 |
 | **Intent Alignment** | Độ phù hợp giữa query intent và problem intent | 1.2 |
 
+> **Note:** Weights được áp dụng trong công thức RRF, không phải normalized weights.
+
 **Công thức RRF:**
 
 $$RRF\_score(d) = \sum_{i \in \{vector, keyword, graph, intent\}} \frac{w_i}{k + rank_i(d)}$$
@@ -340,9 +352,9 @@ Trong đó:
 
 | Threshold | Giá trị | Ý nghĩa |
 |-----------|---------|---------|
-| `CERTAINTY_HIGH` | 0.65 | Rất chắc chắn → Direct Answer |
-| `CERTAINTY_MEDIUM` | 0.50 | Khá chắc → Answer with Clarify |
-| `CERTAINTY_LOW` | 0.42 | Ngưỡng escalate |
+| `CONFIDENCE_HIGH` | 0.85 | Rất chắc chắn → Direct Answer |
+| `CONFIDENCE_MEDIUM` | 0.60 | Khá chắc → Answer with Clarify |
+| `CONFIDENCE_LOW` | 0.40 | Ngưỡng escalate |
 
 **Decision Matrix:**
 
@@ -350,13 +362,43 @@ Trong đó:
 |-----------|--------------|-----------|
 | `need_account_lookup = true` | ESCALATE_PERSONAL | Chuyển tổng đài |
 | `is_out_of_domain = true` | ESCALATE_OUT_OF_SCOPE | Từ chối lịch sự |
-| `clarify_count >= 3` | ESCALATE_MAX_RETRY | Chuyển tổng đài |
-| `certainty < 0.42` | ESCALATE_LOW_CONFIDENCE | Chuyển tổng đài |
-| `certainty >= 0.65` | DIRECT_ANSWER | Trả lời trực tiếp |
-| `certainty >= 0.50` | ANSWER_WITH_CLARIFY | Trả lời + hỏi thêm |
-| `is_ambiguous AND certainty < 0.50` | CLARIFY_REQUIRED | Hỏi làm rõ |
+| `clarify_count >= 10` | ESCALATE_MAX_RETRY | Chuyển tổng đài |
+| `confidence < 0.40` | ESCALATE_LOW_CONFIDENCE | Chuyển tổng đài |
+| `confidence >= 0.85` | DIRECT_ANSWER | Trả lời trực tiếp |
+| `confidence >= 0.60` | ANSWER_WITH_CLARIFY | Trả lời + hỏi thêm |
+| `is_ambiguous AND confidence < 0.60` | CLARIFY_REQUIRED | Hỏi làm rõ |
 
-### 3.6 Embedding Caching
+### 3.6 LLM Synthesis (Response Generation)
+
+**Mô tả:** Khi có nhiều contexts liên quan từ retrieval, hệ thống sử dụng LLM để tổng hợp câu trả lời từ top 5 kết quả thay vì chỉ dùng kết quả đầu tiên.
+
+**Cấu hình:**
+- Model: `gpt-4o-mini`
+- Temperature: `0.3` (low để đảm bảo factual responses)
+- Input: Top 5 contexts từ ranking
+
+**Quy tắc synthesis:**
+```python
+SYNTHESIS_PROMPT = """
+CÂU HỎI: {user_question}
+
+THÔNG TIN THAM KHẢO:
+{contexts}  # Top 5 contexts
+
+QUY TẮC:
+1. Nếu có thông tin PHÙ HỢP → Trả lời dựa trên đó
+2. Nếu KHÔNG có thông tin → Trả lời: "Mình chưa có thông tin về vấn đề này..."
+3. KHÔNG bịa đặt, KHÔNG trả lời nửa vời
+4. KHÔNG liệt kê những gì không biết
+"""
+```
+
+**Ưu điểm:**
+- Kết hợp thông tin từ nhiều nguồn liên quan
+- Trả lời tự nhiên hơn single-context approach
+- Fallback rõ ràng khi không có thông tin
+
+### 3.7 Embedding Caching
 
 ```python
 class EmbeddingCache:
@@ -376,6 +418,27 @@ class EmbeddingCache:
         normalized = self._normalize_query(text)
         return hashlib.md5(normalized.encode()).hexdigest()
 ```
+
+### 3.8 Vietnamese Text Normalization
+
+**Mô tả:** Chuẩn hóa input tiếng Việt trước khi processing, xử lý cả text có dấu và không dấu.
+
+**Hai dictionary chính:**
+- `ABBREVIATIONS`: Mở rộng viết tắt phổ biến (vd: "tk" → "tài khoản")
+- `NO_ACCENT_MAP`: Map từ không dấu → có dấu (100+ cụm từ)
+
+**Thuật toán: Longest-match-first**
+```python
+# Sắp xếp theo độ dài giảm dần để match cụm từ dài trước
+sorted_patterns = sorted(mapping.keys(), key=len, reverse=True)
+
+# Ví dụ: "chuyen tien" được match trước "chuyen"
+# Tránh: "chuyển tien" (partial match sai)
+```
+
+**Ví dụ:**
+- Input: "toi khong chuyen tien duoc"
+- Output: "tôi không chuyển tiền được"
 
 ---
 
@@ -578,20 +641,26 @@ class SessionManager:
 - MEDIUM: 0.60
 - LOW: 0.40
 - GAP_THRESHOLD: 0.15
-- MAX_CLARIFY: 3
+- MAX_CLARIFY: 10
 
 ### 5.6 response_generator.py
 
 **Vai trò:** Sinh response từ context đã truy vấn
 
 **Classes:**
-- `ResponseGenerator`: Sử dụng LLM để format
+- `ResponseGenerator`: Sử dụng LLM để format và tổng hợp
 - `ResponseGeneratorSimple`: Không dùng LLM (template-based)
 
+**Tính năng chính:**
+- **LLM Synthesis Mode**: Tổng hợp câu trả lời từ top 5 contexts khi có nhiều nguồn liên quan
+- Temperature 0.3 cho synthesis (factual responses)
+- Fallback escalation khi không đủ thông tin
+
 **Nguyên tắc:**
-- CHỈ format, KHÔNG thêm thông tin mới
+- CHỈ trả lời dựa trên context có sẵn, KHÔNG thêm thông tin mới
+- Nếu không có thông tin phù hợp → escalate với message rõ ràng
+- KHÔNG trả lời "nửa vời" (liệt kê những gì không biết)
 - Validate response không chứa forbidden phrases
-- Include source citation
 
 ### 5.7 pipeline.py
 

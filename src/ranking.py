@@ -127,9 +127,18 @@ class MultiSignalRanker:
         
         sorted_pids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
         
+        # Create a map of problem_id to similarity_score
+        similarity_map = {c.problem_id: c.similarity_score for c in candidates}
+        
         results = []
         for pid in sorted_pids:
             candidate = next(c for c in candidates if c.problem_id == pid)
+            context = context_map.get(pid)
+            
+            # Add similarity_score to context if exists
+            if context:
+                context.similarity_score = similarity_map.get(pid, 0.0)
+            
             results.append(RankedResult(
                 problem_id=pid,
                 rrf_score=rrf_scores[pid],
@@ -137,7 +146,7 @@ class MultiSignalRanker:
                 keyword_rank=keyword_ranks[pid],
                 graph_rank=graph_ranks[pid],
                 intent_rank=intent_ranks[pid],
-                context=context_map.get(pid)
+                context=context
             ))
         
         confidence_metrics = self._compute_confidence(results, query)
