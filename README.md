@@ -4,6 +4,8 @@
 
 ---
 
+![Uploading mermaid-ai-diagram-2026-02-01-050457.png…]()
+
 ## MỤC LỤC
 
 1. [Giới thiệu và Mục đích](#1-giới-thiệu-và-mục-đích)
