@@ -3,6 +3,7 @@
 > **Thời gian thực hiện**: 15/12/2025 - 01/02/2026 | **Phiên bản**: 3.1
 
 ---
+![Uploading mermaid-ai-diagram-2026-02-01-050457.png…]()
 
 ## MỤC LỤC
 
