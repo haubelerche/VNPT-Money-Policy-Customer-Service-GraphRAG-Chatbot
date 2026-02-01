@@ -34,7 +34,6 @@ from response_generator import ResponseGenerator, ResponseGeneratorSimple
 # New modules
 try:
     from redis_manager import RedisManager, get_redis_manager, init_redis
-    from rate_limiter import RateLimiter, RateLimitTier, get_rate_limiter, RateLimitResult
     from monitoring import MonitoringDashboard, get_monitoring_dashboard, init_monitoring
     ADVANCED_FEATURES_AVAILABLE = True
 except ImportError as e:
@@ -66,7 +65,6 @@ class ChatbotPipeline:
         redis_client=None,
         use_llm_parser: bool = True,
         use_llm_generator: bool = True,
-        enable_rate_limiting: bool = True,
         enable_monitoring: bool = True
     ):
         """
@@ -79,7 +77,6 @@ class ChatbotPipeline:
             redis_client: Optional Redis for session management
             use_llm_parser: Use LLM for intent parsing (vs rule-based)
             use_llm_generator: Use LLM for response generation (vs templates)
-            enable_rate_limiting: Enable rate limiting
             enable_monitoring: Enable monitoring dashboard
         """
         # Store references
@@ -93,15 +90,9 @@ class ChatbotPipeline:
         self.session_manager = SessionManager(redis_client)
         
         # Advanced features
-        self.rate_limiter = None
         self.monitoring = None
         
         if ADVANCED_FEATURES_AVAILABLE:
-            # Initialize Rate Limiter
-            if enable_rate_limiting:
-                self.rate_limiter = get_rate_limiter()
-                logger.info("Rate limiting enabled")
-            
             # Initialize Monitoring
             if enable_monitoring:
                 self.monitoring = init_monitoring(neo4j_driver, llm_client)
@@ -124,8 +115,7 @@ class ChatbotPipeline:
     def process(
         self,
         user_message: str,
-        session_id: str,
-        user_tier: str = "STANDARD"
+        session_id: str
     ) -> FormattedResponse:
         """
         Process a user message through the full pipeline.
@@ -133,26 +123,11 @@ class ChatbotPipeline:
         Args:
             user_message: User's input message
             session_id: Session identifier
-            user_tier: User's rate limit tier (FREE/STANDARD/PREMIUM/UNLIMITED)
             
         Returns:
             FormattedResponse with answer and metadata
         """
         start_time = time.time()
-        
-        # Step 0: Rate Limiting Check
-        if self.rate_limiter:
-            rate_result = self.rate_limiter.check_rate_limit(session_id, user_tier)
-            if not rate_result.allowed:
-                logger.warning(f"Rate limit exceeded for session {session_id}")
-                # Record rate limit event in monitoring
-                if self.monitoring:
-                    self.monitoring.metrics.increment("rate_limit_exceeded", {"tier": user_tier})
-                return FormattedResponse(
-                    message=f"Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi {rate_result.retry_after} giây trước khi thử lại.",
-                    source_citation="",
-                    decision_type=DecisionType.ESCALATE_LOW_CONFIDENCE
-                )
         
         # Initialize log entry
         log_entry = self._init_log_entry(session_id, user_message)
@@ -249,7 +224,10 @@ class ChatbotPipeline:
             # Record metrics to monitoring dashboard
             if self.monitoring:
                 total_latency = log_entry.total_latency_ms
-                self.monitoring.metrics.increment("requests_total", labels={"decision": decision.type.value})
+                # Increment total counter (for dashboard)
+                self.monitoring.metrics.increment("requests_total")
+                # Increment counter with decision label (for detailed stats)
+                self.monitoring.metrics.increment(f"decision_{decision.type.value}")
                 self.monitoring.metrics.observe("request_latency_ms", total_latency)
                 self.monitoring.metrics.observe("confidence_score", ranking_output.confidence_score)
             
@@ -262,7 +240,7 @@ class ChatbotPipeline:
             
             # Record error in monitoring
             if self.monitoring:
-                self.monitoring.metrics.increment("errors_total", labels={"type": type(e).__name__})
+                self.monitoring.metrics.increment("errors_total")
             
             # Return fallback response
             return FormattedResponse(
@@ -315,7 +293,26 @@ class ChatbotPipeline:
         return response
     
     def _get_chat_history(self, session_id: str) -> List[Message]:
-        """Get chat history for session."""
+        """
+        Get chat history for session.
+        
+        Prioritizes Redis for persistence, falls back to in-memory.
+        """
+        # Try Redis first
+        if ADVANCED_FEATURES_AVAILABLE:
+            try:
+                redis_mgr = get_redis_manager()
+                if redis_mgr and redis_mgr.is_connected:
+                    history_data = redis_mgr.get_chat_history(
+                        session_id, 
+                        max_messages=Config.CHAT_HISTORY_MAX_MESSAGES
+                    )
+                    if history_data:
+                        return [Message(role=m["role"], content=m["content"]) for m in history_data]
+            except Exception as e:
+                logger.warning(f"Redis chat history fetch failed: {e}, using in-memory")
+        
+        # Fallback to in-memory
         history = self._chat_histories.get(session_id, [])
         return history[-Config.CHAT_HISTORY_MAX_MESSAGES:]
     
@@ -325,7 +322,22 @@ class ChatbotPipeline:
         user_message: str, 
         assistant_message: str
     ) -> None:
-        """Update chat history."""
+        """
+        Update chat history.
+        
+        Stores in both Redis (for persistence) and in-memory (for fast access).
+        """
+        # Try Redis first
+        if ADVANCED_FEATURES_AVAILABLE:
+            try:
+                redis_mgr = get_redis_manager()
+                if redis_mgr and redis_mgr.is_connected:
+                    redis_mgr.update_chat_history(session_id, user_message, assistant_message)
+                    logger.debug(f"Chat history saved to Redis for session {session_id}")
+            except Exception as e:
+                logger.warning(f"Redis chat history update failed: {e}")
+        
+        # Also update in-memory (fallback + fast access)
         if session_id not in self._chat_histories:
             self._chat_histories[session_id] = []
         
@@ -411,7 +423,6 @@ def create_pipeline(
     openai_api_key: str,
     redis_url: Optional[str] = None,
     use_llm: bool = True,
-    enable_rate_limiting: bool = True,
     enable_monitoring: bool = True
 ) -> ChatbotPipeline:
     """
@@ -424,7 +435,6 @@ def create_pipeline(
         openai_api_key: OpenAI API key
         redis_url: Optional Redis URL for session management
         use_llm: Whether to use LLM (vs rule-based fallbacks)
-        enable_rate_limiting: Enable rate limiting feature
         enable_monitoring: Enable monitoring dashboard
         
     Returns:
@@ -464,6 +474,5 @@ def create_pipeline(
         redis_client=redis_client,
         use_llm_parser=use_llm,
         use_llm_generator=use_llm,
-        enable_rate_limiting=enable_rate_limiting,
         enable_monitoring=enable_monitoring
     )

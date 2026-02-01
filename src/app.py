@@ -7,18 +7,12 @@ from dotenv import load_dotenv
 from pipeline import create_pipeline, ChatbotPipeline
 from schema import DecisionType
 
-# Try to import advanced features
-try:
-    from rate_limiter import get_rate_limiter, RateLimitTier
-    RATE_LIMITER_AVAILABLE = True
-except ImportError:
-    RATE_LIMITER_AVAILABLE = False
-
 try:
     from monitoring import get_monitoring_dashboard
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False
+    get_monitoring_dashboard = None
 
 load_dotenv()
 
@@ -32,14 +26,29 @@ pipeline: ChatbotPipeline = None
 last_responses = {}
 
 
-def get_user_tier(session_id: str) -> str:
-    """
-    Get user's rate limit tier based on session or authentication.
-    In a real app, this would check user authentication/subscription level.
-    """
-    # Default to STANDARD tier for all users
-    # This can be extended to check user authentication and subscription
-    return "STANDARD"
+def _reset_metrics():
+    """Reset metrics khi khởi động để không có data cũ."""
+    try:
+        import redis
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        r = redis.from_url(redis_url, decode_responses=True)
+        # Reset counters và gauges
+        r.set("metrics:counter:requests_total", 0)
+        r.set("metrics:counter:errors_total", 0)
+        r.set("metrics:gauge:active_sessions", 0)
+        # Reset decision counters
+        for decision in ["direct_answer", "answer_with_clarify", "clarify_required", "escalate_low_confidence", "escalate_out_of_domain"]:
+            r.set(f"metrics:counter:decision_{decision}", 0)
+        # Clear histograms
+        r.delete("metrics:histogram:request_latency_ms")
+        r.delete("metrics:histogram:confidence_score")
+        r.delete("metrics:histogram:response_latency")
+        logger.info("Metrics đã được reset")
+    except Exception as e:
+        logger.warning(f"Không thể reset metrics: {e}")
+
+
+
 
 
 def get_pipeline() -> ChatbotPipeline:
@@ -56,7 +65,6 @@ def get_pipeline() -> ChatbotPipeline:
         use_llm = os.getenv("USE_LLM", "true").lower() == "true"
         
         # Advanced features flags - disabled by default for stability
-        enable_rate_limiting = os.getenv("ENABLE_RATE_LIMITING", "false").lower() == "true"
         enable_monitoring = os.getenv("ENABLE_MONITORING", "false").lower() == "true"
         
         if not openai_api_key:
@@ -70,15 +78,14 @@ def get_pipeline() -> ChatbotPipeline:
             openai_api_key=openai_api_key or "",
             redis_url=redis_url,
             use_llm=use_llm,
-            enable_rate_limiting=enable_rate_limiting,
             enable_monitoring=enable_monitoring
         )
         
         logger.info("Pipeline đã sẵn sàng")
-        if enable_rate_limiting:
-            logger.info("Rate limiting: ENABLED")
         if enable_monitoring:
             logger.info("Monitoring: ENABLED")
+            # Reset metrics khi khởi động
+            _reset_metrics()
     
     return pipeline
 
@@ -87,6 +94,20 @@ def get_pipeline() -> ChatbotPipeline:
 async def on_chat_start():
     session_id = cl.user_session.get("id")
     cl.user_session.set("session_id", session_id)
+    
+    # Tăng active_sessions
+    try:
+        bot = get_pipeline()
+        if bot.monitoring:
+            bot.monitoring.metrics.increment("active_sessions_counter")
+            # Đọc giá trị hiện tại và set gauge
+            import redis
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+            r = redis.from_url(redis_url, decode_responses=True)
+            current = int(r.get("metrics:counter:active_sessions_counter") or 0)
+            r.set("metrics:gauge:active_sessions", current)
+    except Exception as e:
+        logger.warning(f"Không thể cập nhật active_sessions: {e}")
     
     welcome_message = """Xin chào! Mình là trợ lý ảo của **VNPT Money**.
 
@@ -109,15 +130,14 @@ Bạn cần hỗ trợ gì ạ?"""
 async def on_message(message: cl.Message):
     session_id = cl.user_session.get("session_id")
     user_message = message.content
-    user_tier = get_user_tier(session_id)
     
-    logger.info(f"Tin nhắn từ {session_id} (tier={user_tier}): {user_message[:50]}...")
+    logger.info(f"Tin nhắn từ {session_id}: {user_message[:50]}...")
     
     response = None
     async with cl.Step(name="Đang xử lý...") as step:
         try:
             bot = get_pipeline()
-            response = bot.process(user_message, session_id, user_tier)
+            response = bot.process(user_message, session_id)
             response_text = response.message
             
             last_responses[session_id] = {
@@ -239,6 +259,17 @@ async def on_chat_end():
         try:
             bot = get_pipeline()
             bot.clear_session(session_id)
+            
+            # Giảm active_sessions
+            if bot.monitoring:
+                import redis
+                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                r = redis.from_url(redis_url, decode_responses=True)
+                current = int(r.get("metrics:counter:active_sessions_counter") or 0)
+                new_count = max(0, current - 1)
+                r.set("metrics:counter:active_sessions_counter", new_count)
+                r.set("metrics:gauge:active_sessions", new_count)
+            
             logger.info(f"Kết thúc phiên: {session_id}")
         except Exception as e:
             logger.error(f"Lỗi xóa phiên: {e}")

@@ -23,8 +23,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 import redis
 
-# Load environment variables from parent directory .env
-# This ensures it works regardless of working directory
+
 env_path = Path(__file__).parent.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)

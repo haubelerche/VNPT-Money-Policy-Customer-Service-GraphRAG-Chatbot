@@ -38,12 +38,14 @@ class RedisConfig:
     prefix_rate_limit: str = "ratelimit:"
     prefix_ab_test: str = "abtest:"
     prefix_metrics: str = "metrics:"
+    prefix_chat_history: str = "chat_history:"
     
     # TTLs (seconds)
     ttl_session: int = 1800      # 30 minutes
     ttl_cache: int = 3600        # 1 hour
     ttl_rate_limit: int = 60     # 1 minute
     ttl_metrics: int = 86400     # 24 hours
+    ttl_chat_history: int = 1800 # 30 minutes (same as session)
 
 
 class RedisManager:
@@ -247,6 +249,114 @@ class RedisManager:
         except Exception as e:
             logger.error(f"Redis cache_invalidate_pattern error: {e}")
             return 0
+    
+    # ==================== Chat History Operations ====================
+    
+    def get_chat_history(self, session_id: str, max_messages: int = 10) -> List[Dict[str, str]]:
+        """
+        Lấy chat history cho session.
+        
+        Args:
+            session_id: Session ID
+            max_messages: Số lượng messages tối đa trả về
+            
+        Returns:
+            List of {"role": "user"|"assistant", "content": str}
+        """
+        if not self.is_connected:
+            return []
+        
+        try:
+            key = f"{self._config.prefix_chat_history}{session_id}"
+            # Lấy tất cả messages từ list (newest first)
+            data = self._redis.lrange(key, 0, max_messages * 2 - 1)
+            # Reverse để có oldest first
+            messages = []
+            for item in reversed(data):
+                try:
+                    messages.append(json.loads(item))
+                except json.JSONDecodeError:
+                    continue
+            return messages[-max_messages * 2:]  # Limit to max_messages pairs
+        except Exception as e:
+            logger.error(f"Redis get_chat_history error: {e}")
+            return []
+    
+    def add_chat_message(self, session_id: str, role: str, content: str) -> bool:
+        """
+        Thêm một message vào chat history.
+        
+        Args:
+            session_id: Session ID
+            role: "user" hoặc "assistant"
+            content: Nội dung message
+            
+        Returns:
+            True nếu thành công
+        """
+        if not self.is_connected:
+            return False
+        
+        try:
+            key = f"{self._config.prefix_chat_history}{session_id}"
+            message = json.dumps({"role": role, "content": content})
+            # Push vào đầu list (newest first)
+            self._redis.lpush(key, message)
+            # Set TTL
+            self._redis.expire(key, self._config.ttl_chat_history)
+            # Trim để giữ max 20 messages (10 pairs)
+            self._redis.ltrim(key, 0, 19)
+            return True
+        except Exception as e:
+            logger.error(f"Redis add_chat_message error: {e}")
+            return False
+    
+    def update_chat_history(
+        self, 
+        session_id: str, 
+        user_message: str, 
+        assistant_message: str
+    ) -> bool:
+        """
+        Thêm cả user và assistant message vào history.
+        
+        Args:
+            session_id: Session ID
+            user_message: Tin nhắn của user
+            assistant_message: Tin nhắn của assistant
+            
+        Returns:
+            True nếu thành công
+        """
+        if not self.is_connected:
+            return False
+        
+        try:
+            key = f"{self._config.prefix_chat_history}{session_id}"
+            # Push assistant first, then user (so when reversed: user, assistant)
+            pipe = self._redis.pipeline()
+            pipe.lpush(key, json.dumps({"role": "assistant", "content": assistant_message}))
+            pipe.lpush(key, json.dumps({"role": "user", "content": user_message}))
+            pipe.expire(key, self._config.ttl_chat_history)
+            pipe.ltrim(key, 0, 19)  # Keep max 20 messages
+            pipe.execute()
+            return True
+        except Exception as e:
+            logger.error(f"Redis update_chat_history error: {e}")
+            return False
+    
+    def clear_chat_history(self, session_id: str) -> bool:
+        """Xóa chat history cho session."""
+        if not self.is_connected:
+            return False
+        
+        try:
+            key = f"{self._config.prefix_chat_history}{session_id}"
+            self._redis.delete(key)
+            return True
+        except Exception as e:
+            logger.error(f"Redis clear_chat_history error: {e}")
+            return False
     
     # ==================== Counter Operations ====================
     

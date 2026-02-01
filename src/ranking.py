@@ -207,6 +207,9 @@ class MultiSignalRanker:
         sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return {pid: rank + 1 for rank, (pid, _) in enumerate(sorted_items)}
     
+
+    
+    
     def _compute_confidence(self, results: List[RankedResult], query: StructuredQueryObject) -> ConfidenceMetrics:
         if not results:
             return ConfidenceMetrics(final_score=0.0, rrf_component=0.0, intent_component=0.0, gap_component=0.0, slot_component=0.0)
