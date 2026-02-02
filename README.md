@@ -888,29 +888,4 @@ Dashboard bao gồm các panel:
 
 ---
 
-## 7. Changelog
 
-### v3.2 (02/02/2026)
-
-**🚀 Cải tiến hiệu suất:**
-- **Fast-Path Optimization**: Giảm latency từ ~40s xuống ~6s khi similarity ≥ 0.85
-- **Giảm max_tokens**: Intent Parser 400→300, Response Generator 600→400
-- **Giảm số contexts**: Từ 5 xuống 3 contexts cho synthesis
-
-**🔧 Cải tiến logic:**
-- **Smart Condensed Query**: Chuẩn hóa câu hỏi người dùng để matching tốt hơn với knowledge base
-- **Decision Engine Update**: `need_account_lookup=true` không còn early exit, vẫn cung cấp hướng dẫn + thông tin escalation
-- **Generic SYNTHESIS_PROMPT**: Loại bỏ hard-coded cases, sử dụng semantic matching linh hoạt
-
-**📊 Cải tiến dữ liệu:**
-- **Supplement Data Support**: Hỗ trợ thêm dữ liệu bổ sung từ `db/import/` mà không cần rebuild database
-- **New Files**: `nodes_problem_supplement.csv`, `nodes_answer_supplement.csv`, `rels_has_problem_supplement.csv`
-
-**📈 Cải tiến schema:**
-- **RankedResult**: Thêm field `similarity_score` để hỗ trợ fast-path decision
-
-### v3.1 (01/02/2026)
-- Initial release với LLM Synthesis
-- Vietnamese Text Normalization
-- Multi-Signal Ranking (RRF)
-- Monitoring với Prometheus + Grafana
