@@ -10,7 +10,9 @@
 
 
 
-https://github.com/user-attachments/assets/44cb6706-dc98-4644-9603-ac542f166d7b
+https://github.com/user-attachments/assets/c53845d8-6c09-4ef1-bb2c-b29f677d7e09
+
+
 
 
 
@@ -23,12 +25,12 @@ https://github.com/user-attachments/assets/44cb6706-dc98-4644-9603-ac542f166d7b
    - 3.2 Constraint-based Retrieval
    - 3.3 Multi-Signal Ranking (RRF)
    - 3.4 Certainty Score
-   - 3.5 Decision Logic *(UPDATED)*
-   - 3.6 LLM Synthesis *(UPDATED)*
+   - 3.5 Decision Logic 
+   - 3.6 LLM Synthesis
    - 3.7 Embedding Caching
    - 3.8 Vietnamese Text Normalization
-   - 3.9 Smart Condensed Query Generation *(NEW)*
-   - 3.10 Fast-Path Response Optimization *(NEW)*
+   - 3.9 Smart Condensed Query Generation
+   - 3.10 Fast-Path Response Optimization 
 4. [Luồng xử lý (Pipeline Flow)](#4-luồng-xử-lý-pipeline-flow)
 5. [Chi tiết từng Module](#5-chi-tiết-từng-module)
 6. [Monitoring & Metrics](#6-monitoring--metrics)
