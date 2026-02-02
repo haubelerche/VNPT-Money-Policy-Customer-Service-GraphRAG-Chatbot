@@ -8,8 +8,7 @@
 
 ![mermaid-ai-diagram-2026-02-01-050841.png](action_graphs/mermaid-ai-diagram-2026-02-01-050841.png)
 
-
-[Untitled design (1).mp4](../../Downloads/Untitled%20design%20%281%29.mp4)
+[demo.mp4](action_graphs/demo.mp4)
 
 ## MỤC LỤC
 
