@@ -5,7 +5,9 @@
 ---
 ![Neo4j Vector Retrieval Flow-2026-02-01-052744.png](action_graphs/Neo4j%20Vector%20Retrieval%20Flow-2026-02-01-052744.png)
 
-[ProjectDemo_Lương_Thanh_Hậu.mp4](../../Videos/Captures/ProjectDemo_L%C6%B0%C6%A1ng_Thanh_H%E1%BA%ADu.mp4)
+![mermaid-ai-diagram-2026-02-01-050841.png](../../Downloads/mermaid-ai-diagram-2026-02-01-050841.png)
+
+[Untitled design.mp4](../../Downloads/Untitled%20design.mp4)
 
 ## MỤC LỤC
 
