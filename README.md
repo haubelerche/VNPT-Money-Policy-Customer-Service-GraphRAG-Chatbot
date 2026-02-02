@@ -8,7 +8,10 @@
 
 ![mermaid-ai-diagram-2026-02-01-050841.png](demo/mermaid-ai-diagram-2026-02-01-050841.png)
 
-[demo.mp4](demo/demo.mp4)
+
+
+https://github.com/user-attachments/assets/44cb6706-dc98-4644-9603-ac542f166d7b
+
 
 
 ## MỤC LỤC
