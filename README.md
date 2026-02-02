@@ -5,6 +5,8 @@
 ---
 ![Neo4j Vector Retrieval Flow-2026-02-01-052744.png](action_graphs/Neo4j%20Vector%20Retrieval%20Flow-2026-02-01-052744.png)
 
+[ProjectDemo_Lương_Thanh_Hậu.mp4](../../Videos/Captures/ProjectDemo_L%C6%B0%C6%A1ng_Thanh_H%E1%BA%ADu.mp4)
+
 ## MỤC LỤC
 
 1. [Giới thiệu và Mục đích](#1-giới-thiệu-và-mục-đích)
