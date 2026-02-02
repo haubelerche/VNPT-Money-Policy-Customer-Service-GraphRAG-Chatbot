@@ -1,6 +1,6 @@
 # VNPT Money Policy Customer Service GraphRAG Chatbot 
 # Dự án thực tập cá nhân 
-> **Thời gian thực hiện**: 15/12/2025 - 01/02/2026 | **Phiên bản**: 3.1
+> **Thời gian thực hiện**: 15/12/2025 - 02/02/2026 | **Phiên bản**: 3.2
 
 ---
 ![Neo4j Vector Retrieval Flow-2026-02-01-052744.png](demo/Neo4j%20Vector%20Retrieval%20Flow-2026-02-01-052744.png)
@@ -20,10 +20,12 @@
    - 3.2 Constraint-based Retrieval
    - 3.3 Multi-Signal Ranking (RRF)
    - 3.4 Certainty Score
-   - 3.5 Decision Logic
-   - 3.6 LLM Synthesis *(NEW)*
+   - 3.5 Decision Logic *(UPDATED)*
+   - 3.6 LLM Synthesis *(UPDATED)*
    - 3.7 Embedding Caching
-   - 3.8 Vietnamese Text Normalization *(NEW)*
+   - 3.8 Vietnamese Text Normalization
+   - 3.9 Smart Condensed Query Generation *(NEW)*
+   - 3.10 Fast-Path Response Optimization *(NEW)*
 4. [Luồng xử lý (Pipeline Flow)](#4-luồng-xử-lý-pipeline-flow)
 5. [Chi tiết từng Module](#5-chi-tiết-từng-module)
 6. [Monitoring & Metrics](#6-monitoring--metrics)
@@ -43,6 +45,9 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 - **Vietnamese Text Normalization**: Xử lý tốt input có dấu và không dấu
 - **Certainty-based Decision**: Sử dụng "Certainty Score" kết hợp nhiều yếu tố để quyết định chính xác
 - **Real-time Monitoring**: Dashboard Grafana theo dõi hiệu suất và sức khỏe hệ thống
+- **Smart Condensed Query** *(v3.2)*: Chuẩn hóa câu hỏi người dùng về dạng chuẩn để matching tốt hơn
+- **Fast-Path Optimization** *(v3.2)*: Bỏ qua LLM khi similarity >= 0.85 để giảm latency xuống ~6s
+- **Supplement Data Support** *(v3.2)*: Hỗ trợ thêm dữ liệu bổ sung từ thư mục db/import/
 
 ### 1.2 Mục đích
 
@@ -363,17 +368,19 @@ Trong đó:
 | `CONFIDENCE_MEDIUM` | 0.60 | Khá chắc → Answer with Clarify |
 | `CONFIDENCE_LOW` | 0.40 | Ngưỡng escalate |
 
-**Decision Matrix:**
+**Decision Matrix (Updated v3.2):**
 
 | Điều kiện | Decision Type | Hành động |
 |-----------|--------------|-----------|
-| `need_account_lookup = true` | ESCALATE_PERSONAL | Chuyển tổng đài |
 | `is_out_of_domain = true` | ESCALATE_OUT_OF_SCOPE | Từ chối lịch sự |
 | `clarify_count >= 10` | ESCALATE_MAX_RETRY | Chuyển tổng đài |
 | `confidence < 0.40` | ESCALATE_LOW_CONFIDENCE | Chuyển tổng đài |
 | `confidence >= 0.85` | DIRECT_ANSWER | Trả lời trực tiếp |
 | `confidence >= 0.60` | ANSWER_WITH_CLARIFY | Trả lời + hỏi thêm |
 | `is_ambiguous AND confidence < 0.60` | CLARIFY_REQUIRED | Hỏi làm rõ |
+| `need_account_lookup = true` | DIRECT_ANSWER + Escalation Info | **Trả lời hướng dẫn + kèm thông tin liên hệ tổng đài** |
+
+> **Cải tiến v3.2:** Khi `need_account_lookup=true`, hệ thống KHÔNG còn early exit mà vẫn tiến hành retrieval để cung cấp hướng dẫn chung cho khách hàng, sau đó kèm thông tin liên hệ tổng đài để xử lý chi tiết. Điều này đảm bảo khách hàng luôn nhận được thông tin hữu ích.
 
 ### 3.6 LLM Synthesis (Response Generation)
 
@@ -382,27 +389,27 @@ Trong đó:
 **Cấu hình:**
 - Model: `gpt-4o-mini`
 - Temperature: `0.3` (low để đảm bảo factual responses)
-- Input: Top 5 contexts từ ranking
+- Input: Top 3 contexts từ ranking (giảm từ 5 để tối ưu latency)
+- Max tokens: 400 (giảm từ 600)
 
-**Quy tắc synthesis:**
+**Quy tắc synthesis (v3.2 - Generic Prompt):**
 ```python
 SYNTHESIS_PROMPT = """
-CÂU HỎI: {user_question}
+CÂU HỎI KHÁCH HÀNG: {user_question}
 
 THÔNG TIN THAM KHẢO:
-{contexts}  # Top 5 contexts
+{contexts}  # Top 3 contexts
 
-QUY TẮC:
-1. Nếu có thông tin PHÙ HỢP → Trả lời dựa trên đó
-2. Nếu KHÔNG có thông tin → Trả lời: "Mình chưa có thông tin về vấn đề này..."
-3. KHÔNG bịa đặt, KHÔNG trả lời nửa vời
-4. KHÔNG liệt kê những gì không biết
+HƯỚNG DẪN: Trả lời ngắn gọn dựa trên thông tin tham khảo. Dùng semantic matching
+để hiểu ý định khách hàng (ví dụ: "chuyển từ ngân hàng" = "nạp tiền từ ngân hàng").
+Không bịa thông tin.
 """
 ```
 
 **Ưu điểm:**
 - Kết hợp thông tin từ nhiều nguồn liên quan
-- Trả lời tự nhiên hơn single-context approach
+- Semantic matching: Hiểu các cách diễn đạt khác nhau của cùng một vấn đề
+- Generic prompt: Không hard-code case cụ thể, linh hoạt với mọi câu hỏi
 - Fallback rõ ràng khi không có thông tin
 
 ### 3.7 Embedding Caching
@@ -446,6 +453,56 @@ sorted_patterns = sorted(mapping.keys(), key=len, reverse=True)
 **Ví dụ:**
 - Input: "toi khong chuyen tien duoc"
 - Output: "tôi không chuyển tiền được"
+
+### 3.9 Smart Condensed Query Generation *(NEW v3.2)*
+
+**Mô tả:** Chuẩn hóa câu hỏi người dùng về dạng chuẩn của knowledge base để cải thiện semantic matching. Giải quyết vấn đề người dùng hỏi theo nhiều cách khác nhau nhưng cùng một ý.
+
+**Ví dụ mapping:**
+| Cách hỏi của người dùng | Condensed Query (chuẩn) |
+|------------------------|------------------------|
+| "chuyển từ MB sang VNPT Money" | "nạp tiền từ ngân hàng vào ví VNPT Money" |
+| "tiền bị trừ nhưng chưa cộng" | "nạp tiền bị trừ tiền nhưng ví không cộng" |
+| "đã chuyển 21 củ rồi nhưng chưa vào" | "nạp tiền từ ngân hàng nhưng chưa nhận được" |
+| "làm sao để lấy lại tiền" | "hoàn tiền giao dịch thất bại" |
+
+**Quy tắc:**
+```python
+QUY_TAC_CONDENSED_QUERY = """
+1. "chuyển từ [ngân hàng] sang VNPT Money" → "nạp tiền từ ngân hàng vào ví"
+2. "bị trừ tiền nhưng chưa cộng/nhận" → "nạp tiền bị trừ nhưng ví không cộng"  
+3. "[số tiền] củ/triệu/k" → bỏ qua số cụ thể, giữ ngữ cảnh
+4. Ưu tiên dùng từ khóa chuẩn: "nạp tiền", "rút tiền", "chuyển tiền"
+"""
+```
+
+**Tác dụng:**
+- Tăng similarity score khi vector search
+- Giảm mismatch giữa user input và database entries
+- Hỗ trợ tốt các biến thể ngôn ngữ tự nhiên
+
+### 3.10 Fast-Path Response Optimization *(NEW v3.2)*
+
+**Mô tả:** Bỏ qua LLM synthesis khi kết quả retrieval có độ tin cậy cao, giảm đáng kể latency.
+
+**Điều kiện kích hoạt Fast-Path:**
+```python
+# Sử dụng trực tiếp answer từ database khi:
+if decision.top_result.similarity_score >= 0.85:
+    use_direct_answer = True  # Bỏ qua LLM synthesis
+```
+
+**So sánh latency:**
+
+| Mode | Latency | Khi nào sử dụng |
+|------|---------|-----------------|
+| **Fast-Path** | ~6s | similarity >= 0.85 |
+| **LLM Synthesis** | ~15-40s | similarity < 0.85 hoặc multi-context |
+
+**Kết quả:**
+- Giảm latency từ ~40s xuống ~6s (giảm 85%)
+- Vẫn đảm bảo chất lượng câu trả lời với high-similarity matches
+- LLM chỉ được gọi khi cần tổng hợp từ nhiều nguồn hoặc similarity thấp
 
 ---
 
@@ -558,7 +615,7 @@ class SessionManager:
     # - Escalate khi count >= 3
 ```
 
-### 4.3 Latency Breakdown (Typical)
+### 4.3 Latency Breakdown (Updated v3.2)
 
 | Component | Latency |
 |-----------|---------|
@@ -567,9 +624,12 @@ class SessionManager:
 | Retrieval (Graph + Vector) | ~50-100ms |
 | Ranking | ~10ms |
 | Decision | ~1ms |
-| Response Generation | ~100-300ms |
-| **Total (Rule-based)** | **~200ms** |
-| **Total (with LLM)** | **~500-800ms** |
+| Response Generation (Fast-Path) | ~50ms |
+| Response Generation (LLM Synthesis) | ~1000-3000ms |
+| **Total (Fast-Path, similarity ≥ 0.85)** | **~6s** |
+| **Total (LLM Synthesis)** | **~15-40s** |
+
+> **Cải tiến v3.2:** Với Fast-Path optimization, latency giảm từ ~40s xuống ~6s (giảm 85%) cho các trường hợp có kết quả matching tốt (similarity ≥ 0.85).
 
 ---
 
@@ -669,6 +729,13 @@ class SessionManager:
 - KHÔNG trả lời "nửa vời" (liệt kê những gì không biết)
 - Validate response không chứa forbidden phrases
 
+**Fast-Path (v3.2):**
+```python
+# Bỏ qua LLM synthesis khi similarity cao
+if decision.top_result.similarity_score >= 0.85:
+    return decision.top_result.answer_content  # Direct answer
+```
+
 ### 5.7 pipeline.py
 
 **Vai trò:** Orchestrator chính kết nối tất cả components
@@ -678,6 +745,10 @@ class SessionManager:
 **Methods:**
 - `process(user_message, session_id) → FormattedResponse`
 - Internal: _get_chat_history, _handle_early_exit, _log_interaction
+
+**Cải tiến v3.2:**
+- Sử dụng `retrieve_with_fallback` để xử lý các trường hợp không tìm thấy kết quả
+- Truyền `need_account_lookup` đến response generator để thêm thông tin escalation
 
 ### 5.8 app.py
 
@@ -693,13 +764,25 @@ class SessionManager:
 
 **Vai trò:** Nạp dữ liệu CSV vào Neo4j
 
-**Flow:**
+**Flow chính:**
 1. Clear database (optional)
 2. Create constraints & indexes
 3. Ingest nodes (Groups, Topics, Problems, Answers)
 4. Create relationships
 5. Generate embeddings (OpenAI)
 6. Create vector index
+
+**Supplement Data Ingestion (v3.2):**
+```python
+# Nạp dữ liệu bổ sung mà không ảnh hưởng database hiện tại
+def ingest_supplement_only():
+    # Load từ db/import/nodes_problem_supplement.csv
+    # Load từ db/import/nodes_answer_supplement.csv  
+    # Load từ db/import/rels_has_problem_supplement.csv
+    # Tạo embedding cho nodes mới
+```
+
+**Lưu ý:** File supplement được đặt trong `db/import/` để Neo4j có thể import trực tiếp khi cần.
 
 ---
 
@@ -800,5 +883,31 @@ Dashboard bao gồm các panel:
 | Mid (50-200 requests) | 274-305ms |
 | End (200-250 requests) | 263-492ms |
 
+---
 
+## 7. Changelog
 
+### v3.2 (02/02/2026)
+
+**🚀 Cải tiến hiệu suất:**
+- **Fast-Path Optimization**: Giảm latency từ ~40s xuống ~6s khi similarity ≥ 0.85
+- **Giảm max_tokens**: Intent Parser 400→300, Response Generator 600→400
+- **Giảm số contexts**: Từ 5 xuống 3 contexts cho synthesis
+
+**🔧 Cải tiến logic:**
+- **Smart Condensed Query**: Chuẩn hóa câu hỏi người dùng để matching tốt hơn với knowledge base
+- **Decision Engine Update**: `need_account_lookup=true` không còn early exit, vẫn cung cấp hướng dẫn + thông tin escalation
+- **Generic SYNTHESIS_PROMPT**: Loại bỏ hard-coded cases, sử dụng semantic matching linh hoạt
+
+**📊 Cải tiến dữ liệu:**
+- **Supplement Data Support**: Hỗ trợ thêm dữ liệu bổ sung từ `db/import/` mà không cần rebuild database
+- **New Files**: `nodes_problem_supplement.csv`, `nodes_answer_supplement.csv`, `rels_has_problem_supplement.csv`
+
+**📈 Cải tiến schema:**
+- **RankedResult**: Thêm field `similarity_score` để hỗ trợ fast-path decision
+
+### v3.1 (01/02/2026)
+- Initial release với LLM Synthesis
+- Vietnamese Text Normalization
+- Multi-Signal Ranking (RRF)
+- Monitoring với Prometheus + Grafana

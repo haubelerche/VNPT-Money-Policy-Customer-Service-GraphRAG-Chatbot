@@ -146,7 +146,8 @@ class MultiSignalRanker:
                 keyword_rank=keyword_ranks[pid],
                 graph_rank=graph_ranks[pid],
                 intent_rank=intent_ranks[pid],
-                context=context
+                context=context,
+                similarity_score=similarity_map.get(pid, 0.0)  # For fast-path decision
             ))
         
         confidence_metrics = self._compute_confidence(results, query)

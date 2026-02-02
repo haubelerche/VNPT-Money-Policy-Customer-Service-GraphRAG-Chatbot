@@ -38,13 +38,9 @@ class DecisionEngine:
             f"clarify_count={clarify_count}"
         )
         
-        # === Early exits ===
-        if query.need_account_lookup:
-            logger.info("Decision: ESCALATE_PERSONAL")
-            return Decision(
-                type=DecisionType.ESCALATE_PERSONAL,
-                escalation_reason="Cần truy cập thông tin giao dịch cá nhân"
-            )
+        # === Early exits - ONLY for out of domain ===
+        # NOTE: need_account_lookup is now handled differently
+        # We still do retrieval and provide guidance, then append escalation info
         
         if query.is_out_of_domain:
             logger.info("Decision: ESCALATE_OUT_OF_SCOPE")
@@ -61,6 +57,13 @@ class DecisionEngine:
             )
         
         if not ranking.results:
+            # If no results AND need account lookup -> escalate to personal
+            if query.need_account_lookup:
+                logger.info("Decision: ESCALATE_PERSONAL (no results + need account)")
+                return Decision(
+                    type=DecisionType.ESCALATE_PERSONAL,
+                    escalation_reason="Cần truy cập thông tin giao dịch cá nhân"
+                )
             logger.info("Decision: ESCALATE_LOW_CONFIDENCE (no results)")
             return Decision(
                 type=DecisionType.ESCALATE_LOW_CONFIDENCE,

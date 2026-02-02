@@ -14,30 +14,18 @@ logger = logging.getLogger(__name__)
 
 
 class IntentParserHybrid:
-    """
-    Hybrid parser: Rule-based first, LLM only when needed.
-    
-    Strategy:
-    1. Try rule-based parsing first (fast, no latency)
-    2. If confidence >= 0.7, use rule-based result
-    3. Otherwise, fallback to LLM for better accuracy
-    
-    This reduces latency for common/simple queries.
-    """
-    
     def __init__(self, llm_client):
         self.llm_client = llm_client
         self.rule_parser = IntentParserLocal()
         self.llm_parser = IntentParserLLM(llm_client)
-        self.llm_threshold = 0.7  # Use LLM if rule confidence < this
+        self.llm_threshold = 0.6  # Use LLM if rule confidence < this
     
     def parse(
         self,
         user_message: str,
         chat_history: Optional[List[Message]] = None
     ) -> StructuredQueryObject:
-        """Parse using hybrid strategy."""
-        # Try rule-based first
+    
         rule_result = self.rule_parser.parse(user_message, chat_history)
         
         # If confident enough, use rule-based
@@ -82,8 +70,43 @@ Trả về JSON với các trường sau:
     "is_out_of_domain": "<boolean> - true CHỈ KHI câu hỏi hoàn toàn không liên quan đến VNPT Money",
     "confidence_intent": "<float 0-1> - độ tự tin trong việc trích xuất",
     "missing_slots": "<array> - danh sách các trường cần làm rõ",
-    "condensed_query": "<string> - câu hỏi đã được chuẩn hóa cho tìm kiếm"
+    "condensed_query": "<string> - câu hỏi đã được chuẩn hóa cho tìm kiếm (QUAN TRỌNG: xem quy tắc bên dưới)"
 }
+
+=== QUY TẮC TẠO condensed_query (RẤT QUAN TRỌNG) ===
+
+Đây là trường quan trọng nhất để tìm kiếm semantic. Phải tuân thủ:
+
+1. **Trích xuất VẤN ĐỀ CỐT LÕI** từ câu hỏi phức tạp:
+   - Loại bỏ thông tin cá nhân (số tiền cụ thể, tên ngân hàng cụ thể nếu không cần thiết)
+   - Giữ lại BẢN CHẤT vấn đề
+   - Dùng từ ngữ CHUẨN của hệ thống
+
+2. **Mapping các biến thể về dạng chuẩn:**
+   - "chuyển từ [ngân hàng] sang VNPT Money" → "nạp tiền từ ngân hàng vào ví"
+   - "nạp từ [ngân hàng]" → "nạp tiền từ ngân hàng vào ví"
+   - "tiền không vào/chưa cộng/chưa nhận được" → "ví không cộng tiền" hoặc "chưa nhận được tiền"
+   - "bị trừ nhưng không cộng" → "ngân hàng trừ tiền nhưng ví không cộng"
+   - "chuyển tiền bị lỗi" → "chuyển tiền thất bại"
+   - "rút về ngân hàng chưa nhận" → "rút tiền về ngân hàng chưa nhận được"
+   - "giao dịch đang chờ/pending" → "giao dịch đang chờ xử lý"
+
+3. **Ví dụ mapping thực tế:**
+   - Input: "tôi mới chuyển từ mb sang tài khoản vnpt money 21 củ nhưng vnpt money của tôi chưa cộng tiền"
+   - Phân tích: Người dùng chuyển tiền từ MB Bank vào VNPT Money, ngân hàng đã trừ nhưng ví chưa cộng
+   - condensed_query: "Nạp tiền từ ngân hàng vào ví VNPT Money bị trừ tiền nhưng ví không cộng"
+
+   - Input: "ck từ vcb qua vnpt 5tr mà chờ cả ngày chưa thấy"
+   - Phân tích: Chuyển tiền từ Vietcombank, chưa nhận được, chờ lâu
+   - condensed_query: "Nạp tiền từ ngân hàng vào ví chờ lâu chưa nhận được tiền"
+
+   - Input: "nạp tiền mà trừ rồi ko thấy vào"
+   - condensed_query: "Nạp tiền bị trừ tiền ngân hàng nhưng ví không cộng"
+
+4. **Đặc biệt với các lỗi giao dịch:**
+   - Nếu có dấu hiệu "trừ tiền + không nhận" → nhấn mạnh cả hai
+   - Nếu có "chờ lâu/pending" → thêm "đang chờ xử lý"
+   - Nếu có "lỗi/thất bại" → thêm "giao dịch lỗi/thất bại"
 
 === DANH SÁCH SERVICES (chọn 1 trong các giá trị sau) ===
 
@@ -166,7 +189,91 @@ KHÁC:
 
 4. Luôn cung cấp condensed_query dù confidence thấp
 
-=== VÍ DỤ ===
+=== VÍ DỤ VỀ LỖI GIAO DỊCH (QUAN TRỌNG) ===
+
+Input: "tôi mới chuyển từ mb sang tài khoản vnpt money 21 củ nhưng vnpt money của tôi chưa cộng tiền"
+Phân tích: Người dùng chuyển tiền từ MB Bank vào VNPT Money, đã bị trừ tiền ngân hàng nhưng ví chưa cộng
+Output:
+{
+    "service": "nap_tien",
+    "problem_type": "tru_tien_chua_nhan",
+    "topic": "nap_tien_tu_ngan_hang_loi",
+    "bank": "MB Bank",
+    "amount": 21000000,
+    "error_code": null,
+    "need_account_lookup": true,
+    "is_out_of_domain": false,
+    "confidence_intent": 0.95,
+    "missing_slots": [],
+    "condensed_query": "Nạp tiền từ ngân hàng vào ví VNPT Money bị trừ tiền nhưng ví không cộng"
+}
+
+Input: "ck từ vcb qua vnpt 5tr mà chờ cả ngày chưa thấy"
+Phân tích: Chuyển khoản từ Vietcombank vào VNPT Money, chờ lâu chưa nhận
+Output:
+{
+    "service": "nap_tien",
+    "problem_type": "tru_tien_chua_nhan",
+    "topic": "nap_tien_tu_ngan_hang_loi",
+    "bank": "Vietcombank",
+    "amount": 5000000,
+    "error_code": null,
+    "need_account_lookup": true,
+    "is_out_of_domain": false,
+    "confidence_intent": 0.93,
+    "missing_slots": [],
+    "condensed_query": "Nạp tiền từ ngân hàng vào ví VNPT Money bị trừ tiền nhưng ví không cộng chờ lâu"
+}
+
+Input: "nạp tiền từ ngân hàng mà trừ rồi ko thấy vào ví"
+Output:
+{
+    "service": "nap_tien",
+    "problem_type": "tru_tien_chua_nhan",
+    "topic": "nap_tien_tu_ngan_hang_loi",
+    "bank": null,
+    "amount": null,
+    "error_code": null,
+    "need_account_lookup": true,
+    "is_out_of_domain": false,
+    "confidence_intent": 0.95,
+    "missing_slots": [],
+    "condensed_query": "Nạp tiền từ ngân hàng vào ví VNPT Money bị trừ tiền nhưng ví không cộng"
+}
+
+Input: "chuyển tiền cho bạn nhưng báo thất bại, tiền có mất không"
+Output:
+{
+    "service": "chuyen_tien",
+    "problem_type": "that_bai",
+    "topic": "chuyen_tien_that_bai",
+    "bank": null,
+    "amount": null,
+    "error_code": null,
+    "need_account_lookup": false,
+    "is_out_of_domain": false,
+    "confidence_intent": 0.95,
+    "missing_slots": [],
+    "condensed_query": "Chuyển tiền thất bại tiền có bị mất không"
+}
+
+Input: "rút tiền từ ví về ngân hàng mà chờ nửa ngày chưa thấy"
+Output:
+{
+    "service": "rut_tien",
+    "problem_type": "tru_tien_chua_nhan",
+    "topic": "rut_tien_chua_nhan",
+    "bank": null,
+    "amount": null,
+    "error_code": null,
+    "need_account_lookup": true,
+    "is_out_of_domain": false,
+    "confidence_intent": 0.94,
+    "missing_slots": [],
+    "condensed_query": "Rút tiền từ ví về ngân hàng chưa nhận được tiền"
+}
+
+=== VÍ DỤ KHÁC ===
 
 Input: "Gói data có tự động gia hạn không?"
 Output:

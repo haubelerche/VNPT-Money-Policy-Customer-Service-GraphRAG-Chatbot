@@ -186,6 +186,7 @@ class RankedResult:
     graph_rank: int
     intent_rank: int
     context: Optional[RetrievedContext] = None
+    similarity_score: float = 0.0  # For fast-path decision
 
 
 @dataclass
@@ -237,12 +238,11 @@ class Config:
     # === LLM Configuration ===
     INTENT_PARSER_MODEL = "gpt-4o-mini"
     INTENT_PARSER_TEMPERATURE = 0.0  # Deterministic
-    INTENT_PARSER_MAX_TOKENS = 500
+    INTENT_PARSER_MAX_TOKENS = 300  # Reduced for speed
     
     RESPONSE_GENERATOR_MODEL = "gpt-4o-mini"
     RESPONSE_GENERATOR_TEMPERATURE = 0.3  # Slight creativity for natural language
-    RESPONSE_GENERATOR_MAX_TOKENS = 800
-    
+    RESPONSE_GENERATOR_MAX_TOKENS = 400  # Reduced for speed  
     # === Embedding ===
     EMBEDDING_MODEL = "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536

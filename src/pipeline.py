@@ -147,13 +147,16 @@ class ChatbotPipeline:
                        f"problem={query.problem_type.value}, "
                        f"confidence={query.confidence_intent:.2f}")
             
-            # Check for early exits (personal data, out of domain)
-            if query.need_account_lookup or query.is_out_of_domain:
+            # Check for out of domain - early exit only for truly unrelated questions
+            if query.is_out_of_domain:
                 return self._handle_early_exit(query, log_entry, start_time, session_id, user_message)
             
-            # Step 3: Retrieval
+            # For need_account_lookup: still do retrieval to provide helpful guidance
+            # The response will include both guidance AND escalation info
+            
+            # Step 3: Retrieval (use fallback for better coverage)
             retrieval_start = time.time()
-            candidates, contexts = self.retrieval.retrieve(query)
+            candidates, contexts = self.retrieval.retrieve_with_fallback(query)
             log_entry.retrieval_latency_ms = int((time.time() - retrieval_start) * 1000)
             log_entry.constrained_problem_count = len(candidates)
             log_entry.retrieval_candidates = [
@@ -203,12 +206,14 @@ class ChatbotPipeline:
             # Collect all contexts from top results for LLM synthesis
             all_contexts = []
             if ranking_output.results:
-                for result in ranking_output.results[:5]:  # Top 5 results
+                for result in ranking_output.results[:3]:  # Top 3 results (reduced from 5 for speed)
                     if result.context:
                         all_contexts.append(result.context)
             
             response = self.response_generator.generate(
-                decision, context, user_message, all_contexts=all_contexts
+                decision, context, user_message, 
+                all_contexts=all_contexts,
+                need_account_lookup=query.need_account_lookup
             )
             log_entry.response_latency_ms = int((time.time() - response_start) * 1000)
             log_entry.final_response = response.message

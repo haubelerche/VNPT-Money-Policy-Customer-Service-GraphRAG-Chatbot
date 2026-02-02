@@ -30,7 +30,7 @@ QUY TẮC:
 7. Không bắt đầu bằng lời chào
 8. Đi thẳng vào nội dung trả lời"""
 
-    SYNTHESIS_PROMPT = """Bạn là trợ lý hỗ trợ khách hàng VNPT Money.
+    SYNTHESIS_PROMPT = """Trợ lý VNPT Money. Trả lời dựa trên thông tin tham khảo.
 
 CÂU HỎI: {user_question}
 
@@ -38,12 +38,10 @@ THÔNG TIN THAM KHẢO:
 {contexts}
 
 QUY TẮC:
-1. Nếu thông tin tham khảo có câu trả lời PHÙ HỢP và ĐẦY ĐỦ cho câu hỏi -> Trả lời dựa trên thông tin đó
-2. Nếu KHÔNG có thông tin phù hợp hoặc không đủ -> Trả lời ĐÚNG câu sau:
-   "Mình chưa có thông tin về vấn đề này. Bạn vui lòng liên hệ hotline 18001091 (nhánh 3) để được hỗ trợ trực tiếp nhé!"
-3. KHÔNG được bịa đặt, KHÔNG được trả lời nửa vời kiểu "không có thông tin về X, Y, Z"
-4. KHÔNG liệt kê những gì không biết
-5. Chỉ trả lời ngắn gọn, đi thẳng vào vấn đề
+- CHỈ dùng thông tin từ nguồn tham khảo, KHÔNG bịa đặt
+- So sánh ngữ nghĩa để tìm nguồn phù hợp (VD: "chuyển từ ngân hàng" = "nạp tiền vào ví")
+- Nếu KHÔNG có thông tin phù hợp → trả lời: "Mình chưa có thông tin về vấn đề này. Vui lòng liên hệ hotline 18001091 (nhánh 3)."
+- Format: numbered list cho bước, bullet cho lưu ý
 
 Trả lời:"""
 
@@ -58,14 +56,38 @@ Trả lời:"""
         decision: Decision, 
         context: Optional[RetrievedContext], 
         user_question: str,
-        all_contexts: Optional[List[RetrievedContext]] = None
+        all_contexts: Optional[List[RetrievedContext]] = None,
+        need_account_lookup: bool = False
     ) -> FormattedResponse:
-        # Nếu có nhiều contexts và LLM available, dùng LLM tổng hợp
+        # OPTIMIZATION: Skip LLM synthesis khi có context tốt để giảm latency
         if decision.type in [DecisionType.DIRECT_ANSWER, DecisionType.ANSWER_WITH_CLARIFY]:
-            if all_contexts and len(all_contexts) > 0:
-                return self._generate_synthesized_answer(decision, all_contexts, user_question)
+            # Kiểm tra nếu top result có similarity cao (>= 0.85) → dùng direct answer (nhanh)
+            use_direct = False
+            similarity = 0.0
+            
+            if decision.top_result:
+                similarity = decision.top_result.similarity_score
+                if similarity >= 0.85:
+                    use_direct = True
+            
+            if use_direct and context:
+                # Fast path: Direct answer without LLM synthesis (~0.5s thay vì 10-15s)
+                logger.info(f"Fast path: Direct answer (similarity={similarity:.2f})")
+                response = self._generate_direct_answer(decision, context, user_question)
+                if need_account_lookup:
+                    response = self._append_personal_escalation(response)
+                return response
+            elif all_contexts and len(all_contexts) > 0:
+                # Slow path: LLM synthesis khi cần tổng hợp nhiều nguồn
+                response = self._generate_synthesized_answer(decision, all_contexts, user_question)
+                if need_account_lookup:
+                    response = self._append_personal_escalation(response)
+                return response
             elif context:
-                return self._generate_direct_answer(decision, context, user_question)
+                response = self._generate_direct_answer(decision, context, user_question)
+                if need_account_lookup:
+                    response = self._append_personal_escalation(response)
+                return response
             else:
                 return self._generate_escalation_low_confidence()
         
@@ -94,9 +116,9 @@ Trả lời:"""
     ) -> FormattedResponse:
         """Dùng LLM tổng hợp câu trả lời từ nhiều contexts."""
         try:
-            # Build context string từ top 3-5 contexts
+            # Build context string từ top 3 contexts (reduced for speed)
             context_parts = []
-            for i, ctx in enumerate(contexts[:5]):
+            for i, ctx in enumerate(contexts[:3]):
                 part = f"--- Nguồn {i+1}: {ctx.problem_title or 'N/A'} ---\n"
                 if ctx.answer_content:
                     part += ctx.answer_content
@@ -169,6 +191,30 @@ Trả lời:"""
         if context.answer_notes:
             parts.append(f"\n**Lưu ý:** {context.answer_notes}")
         return "\n".join(parts)
+    
+    def _append_personal_escalation(self, response: FormattedResponse) -> FormattedResponse:
+        """Thêm thông tin escalation khi cần tra soát giao dịch cá nhân."""
+        escalation_info = """
+
+---
+📞 **Để kiểm tra thông tin giao dịch cụ thể của bạn**, mình cần chuyển yêu cầu đến bộ phận hỗ trợ.
+
+**📱 Hotline:** 18001091 (nhánh 3)
+**📍 Điểm giao dịch:** Các cửa hàng VinaPhone trên toàn quốc
+
+Khi liên hệ, vui lòng cung cấp:
+• Số điện thoại đăng ký VNPT Money
+• Thời gian giao dịch  
+• Mã giao dịch (nếu có)
+
+Tổng đài viên sẽ hỗ trợ kiểm tra ngay cho bạn."""
+        
+        new_message = response.message + escalation_info
+        return FormattedResponse(
+            message=new_message,
+            source_citation=response.source_citation,
+            decision_type=response.decision_type
+        )
     
     def _generate_answer_with_clarify(self, decision: Decision, context: Optional[RetrievedContext], user_question: str) -> FormattedResponse:
         if not context:

@@ -27,6 +27,7 @@ class DataIngestion:
     ):
         self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
         self.data_dir = Path(data_dir)
+        self.supplement_dir = Path("db/import")  # Secondary directory for supplement files
         
         if openai_api_key:
             self.openai = OpenAI(api_key=openai_api_key)
@@ -71,9 +72,13 @@ class DataIngestion:
         logger.info("Đã tạo constraints và indexes")
     
     def read_csv(self, filename: str) -> List[Dict[str, Any]]:
+        # Try primary data directory first
         filepath = self.data_dir / filename
         if not filepath.exists():
-            logger.error(f"Không tìm thấy file: {filepath}")
+            # Fallback to supplement directory
+            filepath = self.supplement_dir / filename
+        if not filepath.exists():
+            logger.warning(f"Không tìm thấy file: {filename}")
             return []
         with open(filepath, "r", encoding="utf-8-sig") as f:
             return list(csv.DictReader(f))
@@ -103,6 +108,13 @@ class DataIngestion:
     def ingest_problems(self):
         logger.info("Nạp Problems...")
         problems = self.read_csv("nodes_problem.csv")
+        
+        # Also load supplement problems if exists
+        supplement_problems = self.read_csv("nodes_problem_supplement.csv")
+        if supplement_problems:
+            logger.info(f"Tìm thấy {len(supplement_problems)} supplement problems")
+            problems.extend(supplement_problems)
+        
         with self.driver.session() as session:
             for p in problems:
                 session.run("""
@@ -117,12 +129,19 @@ class DataIngestion:
     def ingest_answers(self):
         logger.info("Nạp Answers...")
         answers = self.read_csv("nodes_answer.csv")
+        
+        # Also load supplement answers if exists
+        supplement_answers = self.read_csv("nodes_answer_supplement.csv")
+        if supplement_answers:
+            logger.info(f"Tìm thấy {len(supplement_answers)} supplement answers")
+            answers.extend(supplement_answers)
+        
         with self.driver.session() as session:
             for a in answers:
                 session.run("""
                     MERGE (a:Answer {id: $id})
                     SET a.summary = $summary, a.content = $content, a.steps = $steps, a.notes = $notes, a.status = $status
-                """, {"id": a["id"], "summary": a.get("summary", ""), "content": a.get("content", ""), 
+                """, {"id": a["id"], "summary": a.get("summary", a.get("title", "")), "content": a.get("content", ""), 
                       "steps": a.get("steps", ""), "notes": a.get("notes", ""), "status": a.get("status", "active")})
         logger.info(f"Đã nạp {len(answers)} Answers")
     
@@ -143,6 +162,13 @@ class DataIngestion:
     
     def _create_has_problem_rels(self):
         rels = self.read_csv("rels_has_problem.csv")
+        
+        # Also load supplement relationships
+        supplement_rels = self.read_csv("rels_has_problem_supplement.csv")
+        if supplement_rels:
+            logger.info(f"Tìm thấy {len(supplement_rels)} supplement problem relationships")
+            rels.extend(supplement_rels)
+        
         with self.driver.session() as session:
             for r in rels:
                 session.run("MATCH (t:Topic {id: $start_id}) MATCH (p:Problem {id: $end_id}) MERGE (t)-[:HAS_PROBLEM]->(p)", 
@@ -151,6 +177,13 @@ class DataIngestion:
     
     def _create_has_answer_rels(self):
         rels = self.read_csv("rels_has_answer.csv")
+        
+        # Also load supplement relationships
+        supplement_rels = self.read_csv("rels_has_answer_supplement.csv")
+        if supplement_rels:
+            logger.info(f"Tìm thấy {len(supplement_rels)} supplement answer relationships")
+            rels.extend(supplement_rels)
+        
         with self.driver.session() as session:
             for r in rels:
                 session.run("MATCH (p:Problem {id: $start_id}) MATCH (a:Answer {id: $end_id}) MERGE (p)-[:HAS_ANSWER]->(a)", 
@@ -210,6 +243,60 @@ class DataIngestion:
             self.create_vector_index()
         self._print_summary()
         logger.info("Hoàn thành nạp dữ liệu!")
+    
+    def ingest_supplement_only(self, generate_embeddings: bool = True):
+        """Chỉ ingest supplement data mà không xóa database."""
+        logger.info("Bắt đầu nạp supplement data...")
+        
+        # Ingest supplement problems
+        supplement_problems = self.read_csv("nodes_problem_supplement.csv")
+        if supplement_problems:
+            logger.info(f"Nạp {len(supplement_problems)} supplement problems...")
+            with self.driver.session() as session:
+                for p in supplement_problems:
+                    session.run("""
+                        MERGE (p:Problem {id: $id})
+                        SET p.title = $title, p.description = $description, p.intent = $intent, 
+                            p.keywords = $keywords, p.sample_questions = $sample_questions, p.status = $status
+                    """, {"id": p["id"], "title": p["title"], "description": p.get("description", ""), 
+                          "intent": p.get("intent", ""), "keywords": p.get("keywords", ""), 
+                          "sample_questions": p.get("sample_questions", ""), "status": p.get("status", "active")})
+        
+        # Ingest supplement answers
+        supplement_answers = self.read_csv("nodes_answer_supplement.csv")
+        if supplement_answers:
+            logger.info(f"Nạp {len(supplement_answers)} supplement answers...")
+            with self.driver.session() as session:
+                for a in supplement_answers:
+                    session.run("""
+                        MERGE (a:Answer {id: $id})
+                        SET a.summary = $summary, a.content = $content, a.steps = $steps, a.notes = $notes, a.status = $status
+                    """, {"id": a["id"], "summary": a.get("summary", a.get("title", "")), "content": a.get("content", ""), 
+                          "steps": a.get("steps", ""), "notes": a.get("notes", ""), "status": a.get("status", "active")})
+        
+        # Create supplement relationships
+        supplement_problem_rels = self.read_csv("rels_has_problem_supplement.csv")
+        if supplement_problem_rels:
+            logger.info(f"Tạo {len(supplement_problem_rels)} supplement problem relationships...")
+            with self.driver.session() as session:
+                for r in supplement_problem_rels:
+                    session.run("MATCH (t:Topic {id: $start_id}) MATCH (p:Problem {id: $end_id}) MERGE (t)-[:HAS_PROBLEM]->(p)", 
+                               {"start_id": r["start_id"], "end_id": r["end_id"]})
+        
+        supplement_answer_rels = self.read_csv("rels_has_answer_supplement.csv")
+        if supplement_answer_rels:
+            logger.info(f"Tạo {len(supplement_answer_rels)} supplement answer relationships...")
+            with self.driver.session() as session:
+                for r in supplement_answer_rels:
+                    session.run("MATCH (p:Problem {id: $start_id}) MATCH (a:Answer {id: $end_id}) MERGE (p)-[:HAS_ANSWER]->(a)", 
+                               {"start_id": r["start_id"], "end_id": r["end_id"]})
+        
+        # Generate embeddings for new problems
+        if generate_embeddings:
+            self.generate_embeddings()
+        
+        self._print_summary()
+        logger.info("Hoàn thành nạp supplement data!")
     
     def _print_summary(self):
         with self.driver.session() as session:
