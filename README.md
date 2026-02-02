@@ -3,12 +3,12 @@
 > **Thời gian thực hiện**: 15/12/2025 - 01/02/2026 | **Phiên bản**: 3.1
 
 ---
-![Neo4j Vector Retrieval Flow-2026-02-01-052744.png](action_graphs/Neo4j%20Vector%20Retrieval%20Flow-2026-02-01-052744.png)
+![Neo4j Vector Retrieval Flow-2026-02-01-052744.png](demo/Neo4j%20Vector%20Retrieval%20Flow-2026-02-01-052744.png)
 
 
-![mermaid-ai-diagram-2026-02-01-050841.png](action_graphs/mermaid-ai-diagram-2026-02-01-050841.png)
+![mermaid-ai-diagram-2026-02-01-050841.png](demo/mermaid-ai-diagram-2026-02-01-050841.png)
 
-[demo.mp4](action_graphs/demo.mp4)
+[demo.mp4](demo/demo.mp4)
 
 ## MỤC LỤC
 
