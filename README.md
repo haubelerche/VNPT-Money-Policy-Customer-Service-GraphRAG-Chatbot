@@ -296,6 +296,8 @@ RETURN p.*, a.*, t.*, g.*
 
 ### 3.3 Multi-Signal Ranking (RRF - Reciprocal Rank Fusion)
 
+<img width="271" height="394" alt="Reciprocal_Rank_Fusion" src="https://github.com/user-attachments/assets/bbbef8c4-24d8-490e-98db-e8c80a4f6071" />
+
 **4 tín hiệu ranking:**
 
 | Signal | Mô tả | Weight |
