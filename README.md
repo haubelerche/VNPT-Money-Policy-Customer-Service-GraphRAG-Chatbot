@@ -8,12 +8,7 @@
 
 ![mermaid-ai-diagram-2026-02-01-050841.png](demo/mermaid-ai-diagram-2026-02-01-050841.png)
 
-
-
-https://github.com/user-attachments/assets/c53845d8-6c09-4ef1-bb2c-b29f677d7e09
-
-
-
+[demo.mp4](demo/demo.mp4)
 
 
 ## MỤC LỤC
@@ -26,10 +21,10 @@ https://github.com/user-attachments/assets/c53845d8-6c09-4ef1-bb2c-b29f677d7e09
    - 3.3 Multi-Signal Ranking (RRF)
    - 3.4 Certainty Score
    - 3.5 Decision Logic 
-   - 3.6 LLM Synthesis
+   - 3.6 LLM Synthesis 
    - 3.7 Embedding Caching
    - 3.8 Vietnamese Text Normalization
-   - 3.9 Smart Condensed Query Generation
+   - 3.9 Smart Condensed Query Generation 
    - 3.10 Fast-Path Response Optimization 
 4. [Luồng xử lý (Pipeline Flow)](#4-luồng-xử-lý-pipeline-flow)
 5. [Chi tiết từng Module](#5-chi-tiết-từng-module)
@@ -44,22 +39,21 @@ https://github.com/user-attachments/assets/c53845d8-6c09-4ef1-bb2c-b29f677d7e09
 VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng về các vấn đề liên quan tới chính sách, điều khoản và dịch vụ (dữ liệu công khai) của app VNPT Money sử dụng kiến trúc **GraphRAG** (Graph-based Retrieval Augmented Generation). 
 
 **Điểm nổi bật của hệ thống:**
-- **Grounded Responses**: Chỉ trả lời dựa trên knowledge base đã được kiểm duyệt, không hallucination
-- **LLM Synthesis**: Tổng hợp câu trả lời từ nhiều nguồn contexts thay vì single-context
-- **Intelligent Escalation**: Tự động chuyển tổng đài khi không chắc chắn thay vì đoán sai
-- **Vietnamese Text Normalization**: Xử lý tốt input có dấu và không dấu
-- **Certainty-based Decision**: Sử dụng "Certainty Score" kết hợp nhiều yếu tố để quyết định chính xác
-- **Real-time Monitoring**: Dashboard Grafana theo dõi hiệu suất và sức khỏe hệ thống
-- **Smart Condensed Query** *(v3.2)*: Chuẩn hóa câu hỏi người dùng về dạng chuẩn để matching tốt hơn
-- **Fast-Path Optimization** *(v3.2)*: Bỏ qua LLM khi similarity >= 0.85 để giảm latency xuống ~6s
-- **Supplement Data Support** *(v3.2)*: Hỗ trợ thêm dữ liệu bổ sung từ thư mục db/import/
+- Chỉ trả lời dựa trên knowledge base đã được kiểm duyệt, không hallucination
+- Tổng hợp câu trả lời từ nhiều nguồn contexts thay vì single-context
+- Tự động chuyển tổng đài khi không chắc chắn thay vì đoán sai
+- Xử lý tốt input có dấu và không dấu
+- Sử dụng "Certainty Score" kết hợp nhiều yếu tố để quyết định chính xác
+- Dashboard Grafana theo dõi hiệu suất và sức khỏe hệ thống
+- Chuẩn hóa câu hỏi người dùng về dạng chuẩn để matching tốt hơn
+- Bỏ qua LLM khi similarity >= 0.85 để giảm latency xuống ~6s
 
 ### 1.2 Mục đích
 
 **Mục tiêu chính:**
 - Cung cấp hỗ trợ khách hàng 24/7 cho dịch vụ VNPT Money
-- Giải quyết các vấn đề với mức độ phức tạp từ cơ bản tới trung bình
-- Trả lời chính xác dựa trên knowledge base, tự động escalate khi không chắc chắn
+- Giải quyết các vấn đề với mức độ phức tạp về ngữ cảnh từ cơ bản tới trung bình
+- Biết gì nói đó dựa trên knowledge-base, nếu không biết hoặc bị đánh giá không hữu ích thì gợi ý số tổng đài để người dùng được tổng đài viên giúp đỡ
 - Giảm tải cho tổng đài viên với các câu hỏi thường gặp
 
 ### 1.3 Phạm vi hệ thống
@@ -75,9 +69,9 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 ║  • Giải thích điều kiện dịch vụ       • Kiểm tra trạng thái giao dịch        ║
 ║  • Hướng dẫn quy trình thao tác       • Suy đoán kết quả giao dịch           ║
 ║  • Giải thích lỗi quy tắc             • Trả lời vượt knowledge base          ║
-║    (OTP, hạn mức, điều kiện)          • Sinh thông tin không có nguồn        ║
+║    (OTP, hạn mức, điều kiện..)        • Sinh thông tin không có nguồn        ║
 ║  • Hỏi lại khi thiếu thông tin        • Tự ý đưa ra quyết định tài chính     ║
-║  • Escalate đúng thời điểm            • Đoán trạng thái tài khoản            ║
+║                                                                              ║
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 ```
@@ -93,7 +87,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 | **Tài chính - Bảo hiểm** | Bảo hiểm, vay tiêu dùng, tiết kiệm online |
 | **Giải trí & Vé** | MyTV, Vietlott, vé tàu, vé máy bay, khách sạn |
 | **Pháp lý** | Điều khoản sử dụng, quyền riêng tư |
-
+...
 ### 1.5 Tech Stack
 
 | Component | Technology |
@@ -121,7 +115,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 1: INPUT PROCESSING                                                   │
+│  LAYER 1: INPUT PROCESSING                                                  │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐              │
 │  │ Chat History    │  │ Input Validator │  │ Session Manager │              │
 │  │ Manager         │  │                 │  │                 │              │
@@ -139,7 +133,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 3: CONSTRAINT-BASED RETRIEVAL                                         │
+│  LAYER 3: CONSTRAINT-BASED RETRIEVAL                                        │
 │  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐     │
 │  │ Graph Constraint   │→ │ Vector Search      │→ │ Graph Traversal    │     │
 │  │ Filter             │  │ (Constrained)      │  │ (Fetch Context)    │     │
@@ -148,7 +142,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 4: RANKING & CONFIDENCE SCORING                                       │
+│  LAYER 4: RANKING & CONFIDENCE SCORING                                      │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │ Multi-Signal Ranking (RRF): Vector + Keyword + Graph + Intent          │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
@@ -156,7 +150,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  LAYER 5: DECISION ENGINE                                                    │
+│  LAYER 5: DECISION ENGINE                                                   │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │ Decision Router: Confidence-based Routing & Escalation Logic           │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
@@ -166,7 +160,7 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  LAYER 6: RESPONSE GENERATION (Grounded)                                     │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │ LLM Answer Formatter (CHỈ format, KHÔNG thêm thông tin mới)            │ │
+│  │ LLM điều chỉnh format câu trả lời                                      │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────────┘
                                   │
@@ -180,30 +174,18 @@ VNPT Money GraphRAG Chatbot là hệ thống chatbot hỗ trợ khách hàng v�
 ### 2.2 Cấu trúc thư mục
 
 ```
-VNPT-MONEY-CHATBOT/
-├── docs/
-│   ├── ARCHITECTURE_GRAPHRAG_V2.md   # Tài liệu kiến trúc chi tiết
-│   └── PROJECT_DOCUMENTATION.md      # Tài liệu này
+
 ├── src/
 │   ├── schema.py              # Định nghĩa Enums, Dataclasses, Constants
-│   ├── intent_parser.py       # Phân tích intent (Hybrid: Rule + LLM)
+│   ├── intent_parser.py       # Phân tích intent, xét cả rule và llm
 │   ├── retrieval.py           # Truy vấn Neo4j có ràng buộc
-│   ├── ranking.py             # Xếp hạng đa tín hiệu (RRF)
+│   ├── ranking.py             # Xếp hạng kết quả đa mô hình (RRF)
 │   ├── decision_engine.py     # Quyết định routing
-│   ├── response_generator.py  # Sinh response grounded
-│   ├── pipeline.py            # Orchestrator chính
+│   ├── response_generator.py  # Sinh response 
+│   ├── pipeline.py            # điều phối chính
 │   ├── app.py                 # Chainlit application
 │   └── ingest_data_v3.py      # Nạp dữ liệu vào Neo4j
-├── external_data_v3/          # CSV data files
-│   ├── nodes_group.csv        # Nhóm dịch vụ
-│   ├── nodes_topic.csv        # Chủ đề
-│   ├── nodes_problem.csv      # Vấn đề/câu hỏi
-│   ├── nodes_answer.csv       # Câu trả lời
-│   └── rels_*.csv             # Quan hệ giữa các node
-├── db/                        # Neo4j database files
-├── test/                      # Test files
-├── requirements.txt           # Python dependencies
-└── docker-compose.yml         # Docker configuration
+
 ```
 
 ### 2.3 Graph Schema
@@ -254,32 +236,31 @@ VNPT-MONEY-CHATBOT/
 **Chiến lược 2 bước:**
 
 ```python
-# Bước 1: Rule-based parsing (fast, no latency)
+# B1: Rule-based phan tích ý định 
 rule_result = rule_parser.parse(user_message)
 
-# Bước 2: Nếu confidence < 0.7, fallback to LLM
-if rule_result.confidence_intent < 0.7:
+# B2: Nếu ý định chưa được rõ ràng hoặc hỏi lạc đề..., confidence < 0.6, fallback sang llm
+if rule_result.confidence_intent < 0.6:
     return llm_parser.parse(user_message)
 else:
     return rule_result
 ```
 
-**Rule-based Parser:**
+**1. Phân tích bằng Rule-based:**
 - Sử dụng regex patterns và keyword matching
 - Xác định service, problem_type từ từ khóa
-- Trích xuất entities: ngân hàng, số tiền, mã lỗi
 
-**LLM Parser:**
+**2. Phân tích bằng LLM:**
 - Model: `gpt-4o-mini` với temperature = 0 (deterministic)
 - Output: JSON với schema cố định (StructuredQueryObject)
-- Chỉ làm slot-filling, KHÔNG sinh câu trả lời
+- Chỉ làm slot-filling, không sinh câu trả lời
 
 ### 3.2 Constraint-based Retrieval
 
 **Bước 1: Graph Constraint Filter**
 
 ```cypher
--- Cypher query DETERMINISTIC (không phải LLM-generated)
+-- Cypher query DETERMINISTIC 
 MATCH (g:Group)-[:HAS_TOPIC]->(t:Topic)-[:HAS_PROBLEM]->(p:Problem)
 WHERE g.id IN $allowed_groups AND p.status = 'active'
 RETURN DISTINCT p.id AS problem_id
@@ -393,9 +374,9 @@ Trong đó:
 
 **Cấu hình:**
 - Model: `gpt-4o-mini`
-- Temperature: `0.3` (low để đảm bảo factual responses)
-- Input: Top 3 contexts từ ranking (giảm từ 5 để tối ưu latency)
-- Max tokens: 400 (giảm từ 600)
+- Temperature: `0.3` 
+- Input: Top 3 contexts từ ranking 
+- Max tokens: 400 
 
 **Quy tắc synthesis (v3.2 - Generic Prompt):**
 ```python
@@ -890,4 +871,29 @@ Dashboard bao gồm các panel:
 
 ---
 
+## 7. Changelog
 
+### v3.2 (02/02/2026)
+
+**🚀 Cải tiến hiệu suất:**
+- **Fast-Path Optimization**: Giảm latency từ ~40s xuống ~6s khi similarity ≥ 0.85
+- **Giảm max_tokens**: Intent Parser 400→300, Response Generator 600→400
+- **Giảm số contexts**: Từ 5 xuống 3 contexts cho synthesis
+
+**🔧 Cải tiến logic:**
+- **Smart Condensed Query**: Chuẩn hóa câu hỏi người dùng để matching tốt hơn với knowledge base
+- **Decision Engine Update**: `need_account_lookup=true` không còn early exit, vẫn cung cấp hướng dẫn + thông tin escalation
+- **Generic SYNTHESIS_PROMPT**: Loại bỏ hard-coded cases, sử dụng semantic matching linh hoạt
+
+**📊 Cải tiến dữ liệu:**
+- **Supplement Data Support**: Hỗ trợ thêm dữ liệu bổ sung từ `db/import/` mà không cần rebuild database
+- **New Files**: `nodes_problem_supplement.csv`, `nodes_answer_supplement.csv`, `rels_has_problem_supplement.csv`
+
+**📈 Cải tiến schema:**
+- **RankedResult**: Thêm field `similarity_score` để hỗ trợ fast-path decision
+
+### v3.1 (01/02/2026)
+- Initial release với LLM Synthesis
+- Vietnamese Text Normalization
+- Multi-Signal Ranking (RRF)
+- Monitoring với Prometheus + Grafana
