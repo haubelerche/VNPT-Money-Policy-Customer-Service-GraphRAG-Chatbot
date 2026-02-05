@@ -3,9 +3,6 @@
 > **Thời gian thực hiện**: 15/12/2025 - ../02/2026 | **Phiên bản**: 3.2
 
 ---
-<img width="8192" height="7080" alt="Neo4j Vector Retrieval Flow-2026-02-01-052744" src="https://github.com/user-attachments/assets/d937e2b9-ff6b-4ceb-8d5a-5e7aa706e2a4" />
-<img width="2795" height="4970" alt="mermaid-ai-diagram-2026-02-01-050841" src="https://github.com/user-attachments/assets/3a015767-6b22-4551-95dd-3523eb831d8a" />
-
 
 
 https://github.com/user-attachments/assets/243ca33e-4ef8-4d73-bd56-2e1aa2f3ee28
