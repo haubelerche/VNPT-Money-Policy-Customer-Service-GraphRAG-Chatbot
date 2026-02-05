@@ -7,7 +7,11 @@
 <img width="2795" height="4970" alt="mermaid-ai-diagram-2026-02-01-050841" src="https://github.com/user-attachments/assets/3a015767-6b22-4551-95dd-3523eb831d8a" />
 
 
-[demo.mp4](demo/demo.mp4)
+
+https://github.com/user-attachments/assets/243ca33e-4ef8-4d73-bd56-2e1aa2f3ee28
+
+
+
 
 
 ## MỤC LỤC
