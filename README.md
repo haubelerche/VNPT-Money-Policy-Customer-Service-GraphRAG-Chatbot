@@ -3,7 +3,9 @@
 > **Thời gian thực hiện**: 15/12/2025 - ../02/2026 | **Phiên bản**: 3.2
 
 ---
+<img width="8192" height="7712" alt="Neo4j Vector Retrieval Flow-2026-02-05-091241" src="https://github.com/user-attachments/assets/10573b36-1d26-461d-94c5-f6e2b91c21b3" />
 
+<img width="4009" height="8192" alt="flowchart" src="https://github.com/user-attachments/assets/a976afad-7dd2-4b85-910f-06434d96018f" />
 
 https://github.com/user-attachments/assets/243ca33e-4ef8-4d73-bd56-2e1aa2f3ee28
 
