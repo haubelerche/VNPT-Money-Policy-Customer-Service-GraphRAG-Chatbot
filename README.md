@@ -1,6 +1,6 @@
 # VNPT Money Policy Customer Service GraphRAG Chatbot 
 # Dự án thực tập cá nhân 
-> **Thời gian thực hiện**: 15/12/2025 - 02/02/2026 | **Phiên bản**: 3.2
+> **Thời gian thực hiện**: 15/12/2025 - ../02/2026 | **Phiên bản**: 3.2
 
 ---
 <img width="8192" height="7080" alt="Neo4j Vector Retrieval Flow-2026-02-01-052744" src="https://github.com/user-attachments/assets/d937e2b9-ff6b-4ceb-8d5a-5e7aa706e2a4" />
