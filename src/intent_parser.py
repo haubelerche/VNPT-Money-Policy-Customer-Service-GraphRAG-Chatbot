@@ -18,7 +18,7 @@ class IntentParserHybrid:
         self.llm_client = llm_client
         self.rule_parser = IntentParserLocal()
         self.llm_parser = IntentParserLLM(llm_client)
-        self.llm_threshold = 0.6  # Use LLM if rule confidence < this
+        self.llm_threshold = 0.6 
     
     def parse(
         self,
@@ -39,7 +39,7 @@ class IntentParserHybrid:
 
 
 class IntentParser(IntentParserHybrid):
-    """Alias for backward compatibility."""
+    
     pass
 
 
@@ -436,12 +436,6 @@ Output:
 }"""
 
     def __init__(self, llm_client):
-        """
-        Initialize with LLM client.
-        
-        Args:
-            llm_client: OpenAI or compatible client
-        """
         self.llm_client = llm_client
         self.model = Config.INTENT_PARSER_MODEL
         self.temperature = Config.INTENT_PARSER_TEMPERATURE
@@ -453,11 +447,11 @@ Output:
         chat_history: Optional[List[Message]] = None
     ) -> StructuredQueryObject:
         """
-        Parse user message into StructuredQueryObject.
+        chuyển đổi user message thành StructuredQueryObject.
         
         Args:
-            user_message: Current user message
-            chat_history: Previous messages for context
+            user_message: Tin nhắn hiện tại của người dùng
+            chat_history: Các tin nhắn trước đó để làm ngữ cảnh
             
         Returns:
             StructuredQueryObject with extracted slots
@@ -560,7 +554,6 @@ Trả về JSON."""
         )
     
     def _create_fallback_query(self, user_message: str) -> StructuredQueryObject:
-        """Create a fallback query when parsing fails."""
         return StructuredQueryObject(
             service=ServiceEnum.KHAC,
             problem_type=ProblemTypeEnum.KHAC,
@@ -936,7 +929,7 @@ class IntentParserLocal:
     
     SERVICE_KEYWORDS_PRIORITY = [
         # ============================================================
-        # GROUP 1: ĐIỀU KHOẢN (130 problems) - Check FIRST (most specific)
+        # GROUP 1: ĐIỀU KHOẢN (130 problems)
         # ============================================================
         # DIEU_KHOAN phải check TRƯỚC QUYEN_RIENG_TU vì có overlap về "dữ liệu", "thông tin"
         (ServiceEnum.DIEU_KHOAN, [
@@ -1394,18 +1387,6 @@ class IntentParserLocal:
                 # Đã check VNPT_RELATED_PATTERNS ở trên, nếu đến đây nghĩa là không liên quan VNPT
                 logger.info(f"Out of domain detected: asking about '{bank}' without VNPT context")
                 return True
-        
-        # Chủ đề hoàn toàn không liên quan
-        out_of_domain_topics = [
-            "thời tiết", "weather", "nhiệt độ", "mưa nắng",
-            "chứng khoán", "stock", "cổ phiếu",
-            "bóng đá", "world cup", "ngoại hạng",
-            "chính trị", "bầu cử", "quốc hội",
-            "phim ảnh", "ca sĩ", "nghệ sĩ",
-            "công thức nấu ăn", "nấu ăn", "recipe",
-        ]
-        if any(topic in message_lower for topic in out_of_domain_topics):
-            return True
         
         return False
     

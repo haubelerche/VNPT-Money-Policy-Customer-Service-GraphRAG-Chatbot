@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class DecisionEngine:
-    """Engine định tuyến quyết định dựa trên độ tin cậy và trạng thái."""
+    """ định tuyến quyết định dựa trên độ tin cậy và trạng thái."""
     
     def __init__(self):
         self.conf_high = Config.CONFIDENCE_HIGH_THRESHOLD
@@ -127,11 +127,11 @@ class DecisionEngine:
             f"rrf={top_rrf:.3f}, certainty={certainty:.3f}"
         )
         
-        # Decision thresholds based on certainty - ĐÃ ĐIỀU CHỈNH
-        CERTAINTY_HIGH = 0.55     # Rất chắc -> Direct answer (giảm từ 0.65)
-        CERTAINTY_MEDIUM = 0.45   # Khá chắc -> Answer with clarify (giảm từ 0.50)
-        CERTAINTY_LOW = 0.35      # Threshold escalate (giảm từ 0.42)
-        # Dưới CERTAINTY_LOW -> Escalate
+        # Decision thresholds 
+        CERTAINTY_HIGH = 0.55     
+        CERTAINTY_MEDIUM = 0.45   
+        CERTAINTY_LOW = 0.35      
+        
         
         if certainty < CERTAINTY_LOW:
             logger.info(
