@@ -370,11 +370,11 @@ Trong đó:
 | `is_ambiguous AND confidence < 0.60` | CLARIFY_REQUIRED | Hỏi làm rõ |
 | `need_account_lookup = true` | DIRECT_ANSWER + Escalation Info | **Trả lời hướng dẫn + kèm thông tin liên hệ tổng đài** |
 
-> **Cải tiến v3.2:** Khi `need_account_lookup=true`, hệ thống KHÔNG còn early exit mà vẫn tiến hành retrieval để cung cấp hướng dẫn chung cho khách hàng, sau đó kèm thông tin liên hệ tổng đài để xử lý chi tiết. Điều này đảm bảo khách hàng luôn nhận được thông tin hữu ích.
+>  Khi `need_account_lookup=true`, hệ thống không còn early exit mà vẫn tiến hành retrieval để cung cấp hướng dẫn chung cho khách hàng, sau đó kèm thông tin liên hệ tổng đài để xử lý chi tiết. Điều này đảm bảo khách hàng luôn nhận được thông tin hữu ích.
 
 ### 3.6 LLM Synthesis (Response Generation)
 
-**Mô tả:** Khi có nhiều contexts liên quan từ retrieval, hệ thống sử dụng LLM để tổng hợp câu trả lời từ top 5 kết quả thay vì chỉ dùng kết quả đầu tiên.
+**Mô tả:** Xử lý câu hỏi có độ phức tạp cao chứa đa dạng khía cạnh hỏi hoặc hỏi chưa được rõ ràng vì dùng từ chưa tường minh, hệ thống sử dụng LLM để tổng hợp câu trả lời từ top 5 kết quả thay vì chỉ dùng kết quả đầu tiên.
 
 **Cấu hình:**
 - Model: `gpt-4o-mini`
@@ -382,7 +382,7 @@ Trong đó:
 - Input: Top 3 contexts từ ranking 
 - Max tokens: 400 
 
-**Quy tắc synthesis (v3.2 - Generic Prompt):**
+**Quy tắc synthesis:**
 ```python
 SYNTHESIS_PROMPT = """
 CÂU HỎI KHÁCH HÀNG: {user_question}
@@ -444,9 +444,9 @@ sorted_patterns = sorted(mapping.keys(), key=len, reverse=True)
 - Input: "toi khong chuyen tien duoc"
 - Output: "tôi không chuyển tiền được"
 
-### 3.9 Smart Condensed Query Generation *(NEW v3.2)*
+### 3.9 Cơ chế chuẩn hóa lại các biến thể của cùng một câu hỏi
 
-**Mô tả:** Chuẩn hóa câu hỏi người dùng về dạng chuẩn của knowledge base để cải thiện semantic matching. Giải quyết vấn đề người dùng hỏi theo nhiều cách khác nhau nhưng cùng một ý.
+**Mô tả:** Chuẩn hóa câu hỏi người dùng về dạng chuẩn của knowledge base để cải thiện semantic matching. Giải quyết vấn đề người dùng hỏi theo nhiều cách khác nhau nhưng cùng một ý hoặc hỏi dùng từ chưa tường minh
 
 **Ví dụ mapping:**
 | Cách hỏi của người dùng | Condensed Query (chuẩn) |
@@ -471,7 +471,7 @@ QUY_TAC_CONDENSED_QUERY = """
 - Giảm mismatch giữa user input và database entries
 - Hỗ trợ tốt các biến thể ngôn ngữ tự nhiên
 
-### 3.10 Fast-Path Response Optimization *(NEW v3.2)*
+### 3.10 Tối ưu hóa tốc độ trả lời các câu hỏi đơn giản / độ rõ ràng cao (Fast-Path)
 
 **Mô tả:** Bỏ qua LLM synthesis khi kết quả retrieval có độ tin cậy cao, giảm đáng kể latency.
 
@@ -605,7 +605,7 @@ class SessionManager:
     # - Escalate khi count >= 3
 ```
 
-### 4.3 Latency Breakdown (Updated v3.2)
+### 4.3 Latency Breakdown 
 
 | Component | Latency |
 |-----------|---------|
@@ -619,7 +619,7 @@ class SessionManager:
 | **Total (Fast-Path, similarity ≥ 0.85)** | **~6s** |
 | **Total (LLM Synthesis)** | **~15-40s** |
 
-> **Cải tiến v3.2:** Với Fast-Path optimization, latency giảm từ ~40s xuống ~6s (giảm 85%) cho các trường hợp có kết quả matching tốt (similarity ≥ 0.85).
+> Với Fast-Path optimization, latency ~6s (giảm 85%) cho các trường hợp có kết quả matching tốt (similarity ≥ 0.85).
 
 ---
 
@@ -875,29 +875,3 @@ Dashboard bao gồm các panel:
 
 ---
 
-## 7. Changelog
-
-### v3.2 (02/02/2026)
-
-**🚀 Cải tiến hiệu suất:**
-- **Fast-Path Optimization**: Giảm latency từ ~40s xuống ~6s khi similarity ≥ 0.85
-- **Giảm max_tokens**: Intent Parser 400→300, Response Generator 600→400
-- **Giảm số contexts**: Từ 5 xuống 3 contexts cho synthesis
-
-**🔧 Cải tiến logic:**
-- **Smart Condensed Query**: Chuẩn hóa câu hỏi người dùng để matching tốt hơn với knowledge base
-- **Decision Engine Update**: `need_account_lookup=true` không còn early exit, vẫn cung cấp hướng dẫn + thông tin escalation
-- **Generic SYNTHESIS_PROMPT**: Loại bỏ hard-coded cases, sử dụng semantic matching linh hoạt
-
-**📊 Cải tiến dữ liệu:**
-- **Supplement Data Support**: Hỗ trợ thêm dữ liệu bổ sung từ `db/import/` mà không cần rebuild database
-- **New Files**: `nodes_problem_supplement.csv`, `nodes_answer_supplement.csv`, `rels_has_problem_supplement.csv`
-
-**📈 Cải tiến schema:**
-- **RankedResult**: Thêm field `similarity_score` để hỗ trợ fast-path decision
-
-### v3.1 (01/02/2026)
-- Initial release với LLM Synthesis
-- Vietnamese Text Normalization
-- Multi-Signal Ranking (RRF)
-- Monitoring với Prometheus + Grafana
