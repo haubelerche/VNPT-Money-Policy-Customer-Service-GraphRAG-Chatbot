@@ -38,10 +38,13 @@ uvicorn>=0.23.0
 httpx>=0.25.0
 
 # ===========================================
-# Evaluation (optional)
+# Evaluation - RAGAS (LLM-as-Judge)
 # ===========================================
-# ragas>=0.1.0
-# datasets>=2.14.0
+# Built-in evaluator: chỉ cần openai (đã có ở trên)
+# RAGAS library (optional, cho advanced evaluation):
+ragas>=0.2.0
+datasets>=2.14.0
+langchain-openai>=0.1.0
 
 # ===========================================
 # Testing (optional)
