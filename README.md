@@ -358,7 +358,7 @@ Trong đó:
 | `CONFIDENCE_MEDIUM` | 0.60 | Khá chắc → Answer with Clarify |
 | `CONFIDENCE_LOW` | 0.40 | Ngưỡng escalate |
 
-**Decision Matrix (Updated v3.2):**
+**Decision Matrix :**
 
 | Điều kiện | Decision Type | Hành động |
 |-----------|--------------|-----------|
@@ -719,7 +719,7 @@ class SessionManager:
 - KHÔNG trả lời "nửa vời" (liệt kê những gì không biết)
 - Validate response không chứa forbidden phrases
 
-**Fast-Path (v3.2):**
+**Fast-Path:**
 ```python
 # Bỏ qua LLM synthesis khi similarity cao
 if decision.top_result.similarity_score >= 0.85:
@@ -736,7 +736,7 @@ if decision.top_result.similarity_score >= 0.85:
 - `process(user_message, session_id) → FormattedResponse`
 - Internal: _get_chat_history, _handle_early_exit, _log_interaction
 
-**Cải tiến v3.2:**
+note
 - Sử dụng `retrieve_with_fallback` để xử lý các trường hợp không tìm thấy kết quả
 - Truyền `need_account_lookup` đến response generator để thêm thông tin escalation
 
@@ -762,7 +762,7 @@ if decision.top_result.similarity_score >= 0.85:
 5. Generate embeddings (OpenAI)
 6. Create vector index
 
-**Supplement Data Ingestion (v3.2):**
+**Supplement Data Ingestion :**
 ```python
 # Nạp dữ liệu bổ sung mà không ảnh hưởng database hiện tại
 def ingest_supplement_only():
