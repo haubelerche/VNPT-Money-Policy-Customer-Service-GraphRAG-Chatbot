@@ -1,22 +1,11 @@
-"""
-Pipeline orchestrating all components:
-1. Intent Parsing
-2. Constraint-based Retrieval
-3. Multi-signal Ranking
-4. Decision Engine
-5. Response Generation
-6. Logging
-7. Rate Limiting
-8. Monitoring
-"""
-
+from schema import Decision
 import logging
 import time
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from dataclasses import asdict
+from typing import Optional, List
 import json
-
+from redis_manager import get_redis_manager, init_redis
+from monitoring import init_monitoring
 from schema import (
     Message,
     StructuredQueryObject,
@@ -33,8 +22,7 @@ from response_generator import ResponseGenerator, ResponseGeneratorSimple
 
 # New modules
 try:
-    from redis_manager import RedisManager, get_redis_manager, init_redis
-    from monitoring import MonitoringDashboard, get_monitoring_dashboard, init_monitoring
+   
     ADVANCED_FEATURES_AVAILABLE = True
 except ImportError as e:
     ADVANCED_FEATURES_AVAILABLE = False
@@ -44,19 +32,6 @@ logger = logging.getLogger(__name__)
 
 
 class ChatbotPipeline:
-    """
-    Main chatbot pipeline orchestrating all components.
-    
-    Flow:
-    1. Input Processing (history, validation)
-    2. Intent Parsing → StructuredQueryObject
-    3. Retrieval → Candidates + Contexts
-    4. Ranking → RankingOutput
-    5. Decision → Decision
-    6. Response Generation → FormattedResponse
-    7. Logging
-    """
-    
     def __init__(
         self,
         neo4j_driver,
@@ -231,7 +206,6 @@ class ChatbotPipeline:
                 total_latency = log_entry.total_latency_ms
                 # Increment total counter (for dashboard)
                 self.monitoring.metrics.increment("requests_total")
-                # Increment counter with decision label (for detailed stats)
                 self.monitoring.metrics.increment(f"decision_{decision.type.value}")
                 self.monitoring.metrics.observe("request_latency_ms", total_latency)
                 self.monitoring.metrics.observe("confidence_score", ranking_output.confidence_score)
@@ -262,10 +236,9 @@ class ChatbotPipeline:
         session_id: str,
         user_message: str
     ) -> FormattedResponse:
-        """Handle early exit cases (personal data, out of domain)."""
+
         
         # Create minimal decision
-        from schema import RankingOutput, Decision
         
         if query.need_account_lookup:
             decision = Decision(
@@ -412,13 +385,13 @@ class ChatbotPipeline:
         }
         
         logger.info(f"Interaction log: {json.dumps(log_dict, ensure_ascii=False)}")
-        
-        # TODO: Save to database or analytics service
-    
+            
     def clear_session(self, session_id: str) -> None:
         """Clear session data."""
         self._chat_histories.pop(session_id, None)
         self.session_manager.reset_clarify_count(session_id)
+
+
 
 
 def create_pipeline(
@@ -430,21 +403,7 @@ def create_pipeline(
     use_llm: bool = True,
     enable_monitoring: bool = True
 ) -> ChatbotPipeline:
-    """
-    Factory function to create pipeline with all dependencies.
-    
-    Args:
-        neo4j_uri: Neo4j connection URI
-        neo4j_user: Neo4j username
-        neo4j_password: Neo4j password
-        openai_api_key: OpenAI API key
-        redis_url: Optional Redis URL for session management
-        use_llm: Whether to use LLM (vs rule-based fallbacks)
-        enable_monitoring: Enable monitoring dashboard
-        
-    Returns:
-        Configured ChatbotPipeline
-    """
+   
     from neo4j import GraphDatabase
     from openai import OpenAI
     

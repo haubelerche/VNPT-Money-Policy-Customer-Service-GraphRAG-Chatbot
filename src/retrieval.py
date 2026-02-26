@@ -1,9 +1,6 @@
 import logging
 import hashlib
-from typing import List, Optional, Dict, Any
-from functools import lru_cache
-
-from neo4j import GraphDatabase
+from typing import List, Optional, Dict
 
 from schema import (
     StructuredQueryObject,
@@ -132,7 +129,7 @@ class ConstrainedVectorSearch:
         query_embedding = self.embed(query)
         
         cypher = """
-        CALL db.index.vector.queryNodes('problem_embedding_index', $top_k * 2, $embedding)
+        CALL db.index.vector.queryNodes('problem_embedding_index', $top_k * 5, $embedding)
         YIELD node, score
         WHERE node.id IN $constrained_ids
         RETURN node.id AS problem_id, node.title AS title, node.description AS description,
@@ -160,9 +157,36 @@ class ConstrainedVectorSearch:
     
     def search_with_fallback(self, query: str, constrained_ids: List[str], all_problem_ids: List[str], top_k: Optional[int] = None) -> List[CandidateProblem]:
         candidates = self.search(query, constrained_ids, top_k)
-        if len(candidates) < 3 and len(all_problem_ids) > len(constrained_ids):
-            logger.info("Constrained search ít kết quả, mở rộng phạm vi")
-            candidates = self.search(query, all_problem_ids, top_k)
+        
+        # Fallback conditions:
+        # 1. Too few results (original: < 3)
+        # 2. NEW: Top result similarity too low (< 0.75) - even if we have
+        #    enough results, they may be irrelevant (wrong group matched)
+        top_similarity = candidates[0].similarity_score if candidates else 0.0
+        should_fallback = (
+            len(candidates) < 3 or
+            (len(candidates) > 0 and top_similarity < 0.75)
+        )
+        
+        if should_fallback and len(all_problem_ids) > len(constrained_ids):
+            logger.info(
+                f"Fallback triggered: {len(candidates)} candidates, "
+                f"top_similarity={top_similarity:.3f}, expanding to all {len(all_problem_ids)} problems"
+            )
+            fallback_candidates = self.search(query, all_problem_ids, top_k)
+            
+            # Use fallback results if they have better top similarity
+            if fallback_candidates and (
+                not candidates or
+                fallback_candidates[0].similarity_score > top_similarity
+            ):
+                logger.info(
+                    f"Fallback improved: {fallback_candidates[0].similarity_score:.3f} > {top_similarity:.3f}"
+                )
+                candidates = fallback_candidates
+            else:
+                logger.info("Fallback did not improve results, keeping constrained results")
+        
         return candidates
 
 

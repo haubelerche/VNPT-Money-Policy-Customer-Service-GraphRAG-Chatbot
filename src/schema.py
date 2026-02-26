@@ -1,11 +1,3 @@
-"""
-VNPT Money GraphRAG Chatbot - Schema & Constants
-=================================================
-
-This module defines all enums, dataclasses, and constants used across the system.
-All values are strictly controlled - no free-form generation allowed.
-"""
-
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any
@@ -17,12 +9,6 @@ from datetime import datetime
 # ==============================================================================
 
 class ServiceEnum(str, Enum):
-    """
-    Enumeration of all supported services.
-    Used to constrain graph search space.
-    
-    Mapped from actual data in nodes_topic.csv and nodes_problem.csv
-    """
     # === Dịch vụ tài chính cơ bản (ho_tro_khach_hang) ===
     NAP_TIEN = "nap_tien"              # nap_dien_thoai, nap_tien_mobile_money
     RUT_TIEN = "rut_tien"              # rut_tien_mobile_money
@@ -77,10 +63,6 @@ class ServiceEnum(str, Enum):
 
 
 class ProblemTypeEnum(str, Enum):
-    """
-    Enumeration of problem types.
-    Helps narrow down the specific issue.
-    """
     KHONG_NHAN_OTP = "khong_nhan_otp"
     THAT_BAI = "that_bai"
     PENDING_LAU = "pending_lau"
@@ -93,10 +75,6 @@ class ProblemTypeEnum(str, Enum):
 
 
 class DecisionType(str, Enum):
-    """
-    Decision outcomes from the Decision Engine.
-    Each type has a specific response template.
-    """
     DIRECT_ANSWER = "direct_answer"
     ANSWER_WITH_CLARIFY = "answer_with_clarify"
     CLARIFY_REQUIRED = "clarify_required"
@@ -112,8 +90,7 @@ class DecisionType(str, Enum):
 
 @dataclass
 class Message:
-    """Represents a single chat message."""
-    role: str  # "user" or "assistant"
+    role: str  # "user" hoặc "chatbot"
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -121,31 +98,25 @@ class Message:
 @dataclass
 class StructuredQueryObject:
     """
-    The core structured query extracted from user input.
-    This is the PRIMARY input for retrieval - NOT raw user message.
-    
-    LLM chỉ được dùng để populate object này, KHÔNG được sinh answer.
+    Trích ra từ câu hỏi của người dùng dưới dạng có cấu trúc để sử dụng trong các bước tiếp theo.
+    Ở đây bao gồm các trường quan trọng để xác định ý định và ngữ cảnh của người dùng.
     """
-    # Required fields
     service: ServiceEnum
     problem_type: ProblemTypeEnum
-    condensed_query: str  # Normalized query for vector search
-    
-    # Optional refinements
+    condensed_query: str  # query của người dùng đã được chuẩn hóa cho vector search và semantic retrieval
+
+# mặc định
     topic: Optional[str] = None
     bank: Optional[str] = None
     amount: Optional[float] = None
     error_code: Optional[str] = None
     
     # Critical flags
-    need_account_lookup: bool = False  # TRUE → immediate escalation
-    is_out_of_domain: bool = False     # TRUE → out of scope response
-    
-    # Confidence & clarity
+    need_account_lookup: bool = False  # TRUE → chuyển qua tổng đài viên 
+    is_out_of_domain: bool = False   
+
     confidence_intent: float = 0.5     # 0.0 - 1.0
     missing_slots: List[str] = field(default_factory=list)
-    
-    # Raw input for logging
     original_message: str = ""
 
 
@@ -162,7 +133,6 @@ class CandidateProblem:
 
 @dataclass
 class RetrievedContext:
-    """Full context retrieved from graph traversal."""
     problem_id: str
     problem_title: str
     answer_id: str
@@ -173,7 +143,7 @@ class RetrievedContext:
     topic_name: str
     group_id: str
     group_name: str
-    similarity_score: float = 0.0  # Added for decision making
+    similarity_score: float = 0.0  
 
 
 @dataclass
@@ -200,7 +170,7 @@ class RankingOutput:
 
 @dataclass
 class Decision:
-    """Decision from the Decision Engine."""
+    """cho Decision Engine."""
     type: DecisionType
     top_result: Optional[RankedResult] = None
     clarification_slots: List[str] = field(default_factory=list)
@@ -231,27 +201,36 @@ class ConfidenceMetrics:
 
 class Config:
     """
-    Central configuration for the entire system.
-    All thresholds and parameters defined here.
+    cấu hình hệ thống
     """
     
     # === LLM Configuration ===
+    #cho phân tích ngữ cảnh
     INTENT_PARSER_MODEL = "gpt-4o-mini"
-    INTENT_PARSER_TEMPERATURE = 0.0  # Deterministic
-    INTENT_PARSER_MAX_TOKENS = 300  # Reduced for speed
+    INTENT_PARSER_TEMPERATURE = 0.0  
+    INTENT_PARSER_MAX_TOKENS = 300  
     
+
+
+    #cho sinh câu trả lời
     RESPONSE_GENERATOR_MODEL = "gpt-4o-mini"
-    RESPONSE_GENERATOR_TEMPERATURE = 0.3  # Slight creativity for natural language
-    RESPONSE_GENERATOR_MAX_TOKENS = 400  # Reduced for speed  
+    RESPONSE_GENERATOR_TEMPERATURE = 0.3  
+    RESPONSE_GENERATOR_MAX_TOKENS = 400  
+
+
     # === Embedding ===
     EMBEDDING_MODEL = "text-embedding-3-small"
     EMBEDDING_DIMENSION = 1536
     
+
+
     # === Retrieval ===
     VECTOR_SEARCH_TOP_K = 10
     
+
+
     # === Ranking ===
-    RRF_K = 60  # RRF parameter
+    RRF_K = 60  
     RANKING_WEIGHTS = {
         "vector": 1.0,
         "keyword": 0.8,
@@ -268,7 +247,7 @@ class Config:
     
     # === Session ===
     CHAT_HISTORY_MAX_MESSAGES = 10
-    SESSION_TTL_SECONDS = 1800  # 30 minutes
+    SESSION_TTL_SECONDS = 1800  # 30 phút
     
     # === Logging ===
     LOG_SAMPLE_RATE_FOR_RAGAS = 0.10  # 10%

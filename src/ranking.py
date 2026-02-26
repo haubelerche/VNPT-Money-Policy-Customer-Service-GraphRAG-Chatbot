@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class KeywordMatcher:
-    """BM25-style keyword matching cho ranking."""
     
     def __init__(self):
         self.stopwords = {
@@ -49,19 +48,27 @@ class KeywordMatcher:
         return self.compute_overlap_score(query_tokens, doc_tokens)
 
 
+
+from schema import SERVICE_GROUP_MAP
 class GraphDistanceScorer:
-    """Tính điểm dựa trên khoảng cách graph."""
+    """Tính điểm dựa trên khoảng cách graph.
+    
+    FIX: Primary group (first in SERVICE_GROUP_MAP list) gets a boost
+    to prefer ho_tro_khach_hang results over dieu_khoan for operational queries.
+    """
     
     def score(self, candidate: CandidateProblem, context: Optional[RetrievedContext], query: StructuredQueryObject) -> float:
         if not context:
             return 0.3
         if query.topic and context.topic_id == query.topic:
             return 1.0
-        from schema import SERVICE_GROUP_MAP
         expected_groups = SERVICE_GROUP_MAP.get(query.service.value, [])
         if context.group_id in expected_groups:
-            return 0.8
-        return 0.5
+            # Primary group (first in list) gets higher score
+            if expected_groups and context.group_id == expected_groups[0]:
+                return 0.95  # Primary group - strongly preferred
+            return 0.65  # Secondary groups
+        return 0.4
 
 
 class IntentAlignmentScorer:

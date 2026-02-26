@@ -183,7 +183,8 @@ async def prometheus_metrics():
     
     # ==================== Latency Metrics ====================
     latency_values = []
-    raw_latencies = get_redis_list("metrics:histogram:response_latency")
+    # Read from request_latency_ms (written by monitoring.py)
+    raw_latencies = get_redis_list("metrics:histogram:request_latency_ms")
     for v in raw_latencies:
         try:
             latency_values.append(float(v))
@@ -301,7 +302,8 @@ async def json_metrics():
     
     # Get latency stats
     latency_values = []
-    for v in get_redis_list("metrics:histogram:response_latency"):
+    # Read from request_latency_ms (written by monitoring.py)
+    for v in get_redis_list("metrics:histogram:request_latency_ms"):
         try:
             latency_values.append(float(v))
         except:

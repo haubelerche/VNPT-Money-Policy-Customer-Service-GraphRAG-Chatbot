@@ -1299,6 +1299,45 @@ class IntentParserLocal:
     # Keep old dict for backward compatibility
     SERVICE_KEYWORDS = {svc: kws for svc, kws in SERVICE_KEYWORDS_PRIORITY}
     
+
+    ACTION_SERVICE_OVERRIDES = [
+        (ServiceEnum.NAP_TIEN, [
+            "nạp tiền", "nap tien", "top up", "topup",
+        ]),
+        (ServiceEnum.RUT_TIEN, [
+            "rút tiền", "rut tien", "withdraw",
+        ]),
+        (ServiceEnum.CHUYEN_TIEN, [
+            "chuyển tiền", "chuyen tien", "transfer",
+        ]),
+        (ServiceEnum.THANH_TOAN, [
+            "thanh toán dịch vụ", "thanh toan dich vu",
+            "thanh toán hóa đơn", "thanh toan hoa don",
+            "thanh toán tiền điện", "thanh toán tiền nước",
+            "thanh toán bằng mobile money", "thanh toán bằng vnpt",
+            "thanh toán qua mobile money", "thanh toán qua vnpt",
+        ]),
+        (ServiceEnum.OTP, [
+            "không nhận được otp", "khong nhan duoc otp",
+            "không nhận otp", "chưa nhận được otp", "chưa nhận otp",
+            "otp không về", "otp chưa về", "không có otp",
+        ]),
+    ]
+    
+    # When these terms appear, DON'T apply action overrides
+    # → Let SERVICE_KEYWORDS_PRIORITY handle it (DIEU_KHOAN context)
+    TERMS_CONTEXT_GUARD = [
+        "điều khoản", "điều kiện sử dụng", "điều kiện",
+        "quy định", "quy chế", "chính sách",
+        "biểu phí", "phí dịch vụ",
+        "tra soát", "khiếu nại",
+        "quyền nghĩa vụ", "trách nhiệm",
+        "phạm vi áp dụng", "giới hạn trách nhiệm",
+        "miễn trừ", "bất khả kháng",
+        "smartotp điều khoản", "quyền smartotp", "nghĩa vụ smartotp",
+        "terms", "policy",
+    ]
+    
     PROBLEM_KEYWORDS = {
         ProblemTypeEnum.KHONG_NHAN_OTP: ["không nhận", "chưa nhận otp", "không có otp"],
         ProblemTypeEnum.THAT_BAI: ["thất bại", "fail", "lỗi", "error", "không được"],
@@ -1427,12 +1466,26 @@ class IntentParserLocal:
                 original_message=user_message
             )
         
-        # Detect service using PRIORITY order
+        # Detect service using ACTION VERB OVERRIDES first
+        # FIX: Prevents "Cách nạp tiền vào tài khoản Mobile Money" from being
+        # routed to DIEU_KHOAN due to "mobile money" keyword in Group 1.
+        # Action verbs take priority UNLESS message is about terms/conditions.
         service = ServiceEnum.KHAC
-        for svc, keywords in self.SERVICE_KEYWORDS_PRIORITY:
-            if any(kw in message_lower for kw in keywords):
-                service = svc
-                break
+        has_terms_context = any(kw in message_lower for kw in self.TERMS_CONTEXT_GUARD)
+        
+        if not has_terms_context:
+            for svc, keywords in self.ACTION_SERVICE_OVERRIDES:
+                if any(kw in message_lower for kw in keywords):
+                    service = svc
+                    logger.info(f"Action verb override: {service.value} (skipped DIEU_KHOAN)")
+                    break
+        
+        # Fallback to PRIORITY keyword matching if no action override matched
+        if service == ServiceEnum.KHAC:
+            for svc, keywords in self.SERVICE_KEYWORDS_PRIORITY:
+                if any(kw in message_lower for kw in keywords):
+                    service = svc
+                    break
         
         # Detect problem type
         problem_type = ProblemTypeEnum.KHAC

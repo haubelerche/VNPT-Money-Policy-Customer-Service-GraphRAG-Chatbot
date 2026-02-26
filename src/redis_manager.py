@@ -1,15 +1,3 @@
-"""
-Redis Manager - Quản lý kết nối và operations với Redis
-========================================================
-
-Cung cấp:
-- Connection pooling
-- Session management
-- Caching layer
-- Rate limiting support
-- A/B testing support
-- Monitoring metrics storage
-"""
 
 import json
 import logging
