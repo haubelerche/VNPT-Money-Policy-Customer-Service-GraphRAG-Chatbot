@@ -30,18 +30,24 @@ QUY TẮC:
 7. Không bắt đầu bằng lời chào
 8. Đi thẳng vào nội dung trả lời"""
 
-    SYNTHESIS_PROMPT = """Trợ lý VNPT Money. Trả lời dựa trên thông tin tham khảo.
+    SYNTHESIS_PROMPT = """Trợ lý VNPT Money. Trả lời NGẮN GỌN, SÁT NGUYÊN VĂN với nguồn tham khảo.
 
 CÂU HỎI: {user_question}
 
 THÔNG TIN THAM KHẢO:
 {contexts}
 
-QUY TẮC:
-- CHỈ dùng thông tin từ nguồn tham khảo, KHÔNG bịa đặt
-- So sánh ngữ nghĩa để tìm nguồn phù hợp (VD: "chuyển từ ngân hàng" = "nạp tiền vào ví")
-- Nếu KHÔNG có thông tin phù hợp → trả lời: "Mình chưa có thông tin về vấn đề này. Vui lòng liên hệ hotline 18001091 (nhánh 3)."
-- Format: numbered list cho bước, bullet cho lưu ý
+QUY TẮC BẮT BUỘC:
+- QUAN TRỌNG: Nếu câu hỏi có NHIỀU Ý/NHIỀU PHẦN (ví dụ: "có X không? nếu có thì làm sao?"), phải TRẢ LỜI TẤT CẢ các ý, sử dụng thông tin từ NHIỀU nguồn tham khảo khác nhau nếu cần
+- Chọn nguồn tham khảo PHÙ HỢP NHẤT với từng ý trong câu hỏi. Nếu có nhiều nguồn, kết hợp thông tin từ các nguồn liên quan
+- CHỈ dùng thông tin từ nguồn tham khảo, TUYỆT ĐỐI KHÔNG bịa đặt hay thêm thông tin ngoài context
+- Trả lời NGẮN GỌN, đi thẳng vào nội dung, KHÔNG lan man hay giải thích dài dòng
+- SỬ DỤNG NGUYÊN VĂN câu từ trong nguồn tham khảo càng nhiều càng tốt, KHÔNG diễn đạt lại (paraphrase)
+- GIỮ NGUYÊN thuật ngữ, tên riêng, số liệu chính xác từ nguồn
+- Nếu KHÔNG có nguồn nào phù hợp → trả lời: "Mình chưa có thông tin về vấn đề này. Vui lòng liên hệ hotline 18001091 (nhánh 3)."
+- KHÔNG thêm bước hoặc thông tin mà context KHÔNG đề cập
+- KHÔNG thêm heading, tiêu đề, markdown bold/italic nếu nguồn không có
+- KHÔNG thêm lời khuyên, nhận xét cá nhân hay bình luận ngoài nội dung nguồn
 
 Trả lời:"""
 
@@ -51,6 +57,47 @@ Trả lời:"""
         self.temperature = Config.RESPONSE_GENERATOR_TEMPERATURE
         self.max_tokens = Config.RESPONSE_GENERATOR_MAX_TOKENS
     
+    @staticmethod
+    def _is_multi_part_question(user_question: str) -> bool:
+        """Detect if user question has multiple parts/intents.
+        
+        Examples:
+        - "có X không? nếu có thì Y?" → True
+        - "X ở đâu. làm sao để Y" → True  
+        - "có X không. nếu được thì Y" → True
+        - "hướng dẫn đóng học phí" → False
+        """
+        q = user_question.lower().strip()
+        
+        # Pattern 1: Conditional follow-up ("nếu có/được thì...", "nếu vậy thì...")
+        import re
+        if re.search(r'nếu\s+(có|được|vậy|rồi)\s+thì', q):
+            return True
+        
+        # Pattern 1b: "nếu có/được" at sentence boundary (without "thì")
+        if re.search(r'[.?!,]\s*nếu\s+(có|được)', q):
+            return True
+        
+        # Pattern 2: Multiple question marks
+        if q.count('?') >= 2:
+            return True
+        
+        # Pattern 3: Multiple sentences with question indicators
+        # Split by sentence-ending punctuation
+        sentences = re.split(r'[.?!]', q)
+        question_sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 5]
+        if len(question_sentences) >= 2:
+            # Check if at least 2 parts look like distinct questions/requests
+            question_words = ['không', 'sao', 'thế nào', 'ở đâu', 'bao giờ', 'bao lâu', 
+                            'như thế nào', 'làm sao', 'cách nào', 'gì', 'nào', 'chỗ nào',
+                            'ở chỗ nào', 'tại đâu']
+            q_count = sum(1 for s in question_sentences 
+                         if any(w in s for w in question_words))
+            if q_count >= 2:
+                return True
+        
+        return False
+
     def generate(
         self, 
         decision: Decision, 
@@ -67,8 +114,16 @@ Trả lời:"""
             
             if decision.top_result:
                 similarity = decision.top_result.similarity_score
-                if similarity >= 0.85:
+                if similarity >= 0.90:
                     use_direct = True
+            
+            # CRITICAL FIX: Câu hỏi nhiều ý (multi-part) cần LLM synthesis
+            # để trả lời TẤT CẢ các ý, không chỉ ý đầu tiên
+            is_multi_part = self._is_multi_part_question(user_question)
+            if is_multi_part:
+                logger.info(f"Multi-part question detected, forcing LLM synthesis "
+                           f"(contexts={len(all_contexts) if all_contexts else 0}, similarity={similarity:.2f})")
+                use_direct = False  # Override fast path - always use synthesis for multi-part
             
             if use_direct and context:
                 # Fast path: Direct answer without LLM synthesis (~0.5s thay vì 10-15s)
@@ -116,9 +171,11 @@ Trả lời:"""
     ) -> FormattedResponse:
         """Dùng LLM tổng hợp câu trả lời từ nhiều contexts."""
         try:
-            # Build context string từ top 3 contexts (reduced for speed)
+            # Build context string - use more contexts for multi-part questions
+            is_multi_part = self._is_multi_part_question(user_question)
+            ctx_limit = 5 if is_multi_part else 3
             context_parts = []
-            for i, ctx in enumerate(contexts[:3]):
+            for i, ctx in enumerate(contexts[:ctx_limit]):
                 part = f"--- Nguồn {i+1}: {ctx.problem_title or 'N/A'} ---\n"
                 if ctx.answer_content:
                     part += ctx.answer_content
@@ -143,6 +200,20 @@ Trả lời:"""
                 logger.warning("LLM synthesis response too short, falling back")
                 if contexts[0]:
                     return self._generate_direct_answer(decision, contexts[0], user_question)
+                return self._generate_escalation_low_confidence()
+            
+            # Detect "no info" responses from LLM synthesis
+            # When contexts are irrelevant, the LLM correctly says it has no info.
+            # Return the more helpful LOW_CONFIDENCE template instead of the bare message.
+            NO_INFO_MARKERS = [
+                "chưa có thông tin",
+                "không có thông tin phù hợp",
+                "không tìm thấy thông tin",
+                "nằm ngoài phạm vi",
+            ]
+            response_lower = response_text.lower()
+            if any(marker in response_lower for marker in NO_INFO_MARKERS):
+                logger.info("LLM synthesis returned 'no info' — switching to LOW_CONFIDENCE template")
                 return self._generate_escalation_low_confidence()
             
             return FormattedResponse(

@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 
 from pipeline import create_pipeline, ChatbotPipeline
 from schema import DecisionType
+from monitoring import get_monitoring_dashboard
 
 try:
-    from monitoring import get_monitoring_dashboard
     MONITORING_AVAILABLE = True
 except ImportError:
     MONITORING_AVAILABLE = False

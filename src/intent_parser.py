@@ -108,6 +108,15 @@ Trả về JSON với các trường sau:
    - Nếu có "chờ lâu/pending" → thêm "đang chờ xử lý"
    - Nếu có "lỗi/thất bại" → thêm "giao dịch lỗi/thất bại"
 
+5. **CÂU HỎI NHIỀU Ý (RẤT QUAN TRỌNG):**
+   - Nếu người dùng hỏi nhiều ý trong 1 câu (ví dụ: "có X không? nếu có thì Y?"), condensed_query phải BAO GỒM TẤT CẢ các ý
+   - Ví dụ:
+     + Input: "vnpt money có cho phép học sinh đóng học phí không. nếu có thì đóng ở đâu"
+     + condensed_query: "Có thể đóng học phí cho học sinh không và hướng dẫn đóng học phí trên VNPT Money"
+     + Input: "thanh toán tiền điện trên vnpt money được không? nếu được thì làm sao?"
+     + condensed_query: "Có thể thanh toán tiền điện trên VNPT Money không và hướng dẫn các bước thanh toán tiền điện"
+   - KHÔNG được chỉ giữ 1 ý và bỏ ý còn lại
+
 === DANH SÁCH SERVICES (chọn 1 trong các giá trị sau) ===
 
 DỊCH VỤ TÀI CHÍNH CƠ BẢN:

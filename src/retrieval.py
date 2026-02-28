@@ -158,34 +158,45 @@ class ConstrainedVectorSearch:
     def search_with_fallback(self, query: str, constrained_ids: List[str], all_problem_ids: List[str], top_k: Optional[int] = None) -> List[CandidateProblem]:
         candidates = self.search(query, constrained_ids, top_k)
         
-        # Fallback conditions:
-        # 1. Too few results (original: < 3)
-        # 2. NEW: Top result similarity too low (< 0.75) - even if we have
-        #    enough results, they may be irrelevant (wrong group matched)
         top_similarity = candidates[0].similarity_score if candidates else 0.0
+        
+        # Cross-check threshold: when constrained results aren't a strong match,
+        # always verify against the full KB. This catches intent misclassification
+        # (e.g., "bỏ tiền vào ví" parsed as dieu_khoan instead of nap_tien).
+        # Threshold raised from 0.75→0.88: wrong-group content can score 0.80+
+        # due to partial semantic overlap (e.g., "Mobile Money" appears in many groups).
+        CROSS_CHECK_THRESHOLD = 0.88
+        
         should_fallback = (
             len(candidates) < 3 or
-            (len(candidates) > 0 and top_similarity < 0.75)
+            top_similarity < CROSS_CHECK_THRESHOLD
         )
         
         if should_fallback and len(all_problem_ids) > len(constrained_ids):
             logger.info(
-                f"Fallback triggered: {len(candidates)} candidates, "
-                f"top_similarity={top_similarity:.3f}, expanding to all {len(all_problem_ids)} problems"
+                f"Cross-check triggered: {len(candidates)} candidates, "
+                f"top_similarity={top_similarity:.3f} < {CROSS_CHECK_THRESHOLD}, "
+                f"expanding to all {len(all_problem_ids)} problems"
             )
             fallback_candidates = self.search(query, all_problem_ids, top_k)
             
-            # Use fallback results if they have better top similarity
-            if fallback_candidates and (
-                not candidates or
-                fallback_candidates[0].similarity_score > top_similarity
-            ):
-                logger.info(
-                    f"Fallback improved: {fallback_candidates[0].similarity_score:.3f} > {top_similarity:.3f}"
-                )
-                candidates = fallback_candidates
-            else:
-                logger.info("Fallback did not improve results, keeping constrained results")
+            # Use fallback if it finds a notably better match (>0.02 improvement)
+            # or if it finds a match above 0.85 that the constrained search missed
+            if fallback_candidates:
+                fallback_top = fallback_candidates[0].similarity_score
+                improvement = fallback_top - top_similarity
+                
+                if improvement > 0.02 or (fallback_top >= 0.85 and top_similarity < 0.85):
+                    logger.info(
+                        f"Cross-check improved: {fallback_top:.3f} vs {top_similarity:.3f} "
+                        f"(+{improvement:.3f})"
+                    )
+                    candidates = fallback_candidates
+                else:
+                    logger.info(
+                        f"Cross-check: no significant improvement "
+                        f"({fallback_top:.3f} vs {top_similarity:.3f}), keeping constrained"
+                    )
         
         return candidates
 
@@ -235,6 +246,54 @@ class GraphTraversal:
         return contexts[0] if contexts else None
 
 
+class QueryNormalizer:
+    """Chuẩn hóa câu hỏi informal/slang thành dạng chuẩn để cải thiện vector search.
+    
+    Giải quyết vấn đề: câu hỏi viết tắt, ngôn ngữ đời thường có similarity
+    thấp hơn so với câu hỏi chuẩn → giảm Context Precision & Recall khi
+    mở rộng test data.
+    """
+    
+    SLANG_MAP = {
+        "đt": "điện thoại",
+        "sdt": "số điện thoại",
+        "ck": "chuyển khoản",
+        "tk": "tài khoản",
+        "nk": "nạp khoản",
+        "đky": "đăng ký",
+        "đk": "đăng ký",
+        "ko": "không",
+        "k": "không",
+        "dc": "được",
+        "đc": "được",
+        "lk": "liên kết",
+        "nh": "ngân hàng",
+        "app": "ứng dụng",
+        "ib": "inbox",
+        "tks": "cảm ơn",
+        "mk": "mật khẩu",
+        "otp": "OTP",
+        "gd": "giao dịch",
+        "tt": "thanh toán",
+    }
+    
+    @classmethod
+    def normalize(cls, query: str) -> str:
+        """Chuẩn hóa query: thay thế viết tắt, chuẩn hóa khoảng trắng."""
+        import re
+        normalized = query.strip()
+        
+        # Replace slang/abbreviations (word boundary matching)
+        for slang, full in cls.SLANG_MAP.items():
+            pattern = r'\b' + re.escape(slang) + r'\b'
+            normalized = re.sub(pattern, full, normalized, flags=re.IGNORECASE)
+        
+        # Normalize whitespace
+        normalized = re.sub(r'\s+', ' ', normalized).strip()
+        
+        return normalized
+
+
 class RetrievalPipeline:
     """Pipeline retrieval hoàn chỉnh."""
     
@@ -242,6 +301,7 @@ class RetrievalPipeline:
         self.constraint_filter = GraphConstraintFilter(neo4j_driver)
         self.vector_search = ConstrainedVectorSearch(neo4j_driver, embedding_client)
         self.graph_traversal = GraphTraversal(neo4j_driver)
+        self.query_normalizer = QueryNormalizer()
     
     def retrieve(self, query: StructuredQueryObject, top_k: Optional[int] = None) -> tuple[List[CandidateProblem], List[RetrievedContext]]:
         constrained_ids = self.constraint_filter.get_constrained_problems(query)
@@ -259,7 +319,13 @@ class RetrievalPipeline:
     def retrieve_with_fallback(self, query: StructuredQueryObject, top_k: Optional[int] = None) -> tuple[List[CandidateProblem], List[RetrievedContext]]:
         constrained_ids = self.constraint_filter.get_constrained_problems(query)
         all_ids = self.constraint_filter.get_all_active_problems()
-        candidates = self.vector_search.search_with_fallback(query.condensed_query, constrained_ids, all_ids, top_k)
+        
+        # Normalize query for better matching with informal/slang input
+        search_query = self.query_normalizer.normalize(query.condensed_query)
+        if search_query != query.condensed_query:
+            logger.info(f"Query normalized: '{query.condensed_query}' -> '{search_query}'")
+        
+        candidates = self.vector_search.search_with_fallback(search_query, constrained_ids, all_ids, top_k)
         problem_ids = [c.problem_id for c in candidates]
         contexts = self.graph_traversal.fetch_context(problem_ids)
         return candidates, contexts

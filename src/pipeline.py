@@ -20,6 +20,34 @@ from ranking import MultiSignalRanker
 from decision_engine import DecisionEngine, SessionManager
 from response_generator import ResponseGenerator, ResponseGeneratorSimple
 
+import re
+
+
+def _is_multi_part_question(text: str) -> bool:
+    """Detect if user question has multiple parts/intents (pipeline-level helper)."""
+    q = text.lower().strip()
+    # Pattern 1: Conditional follow-up
+    if re.search(r'nếu\s+(có|được|vậy|rồi)\s+thì', q):
+        return True
+    # Pattern 1b: "nếu có/được" at sentence boundary (without "thì")
+    if re.search(r'[.?!,]\s*nếu\s+(có|được)', q):
+        return True
+    # Pattern 2: Multiple question marks
+    if q.count('?') >= 2:
+        return True
+    # Pattern 3: Multiple sentences with question words
+    sentences = re.split(r'[.?!]', q)
+    question_sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 5]
+    if len(question_sentences) >= 2:
+        question_words = ['không', 'sao', 'thế nào', 'ở đâu', 'bao giờ', 'bao lâu',
+                          'như thế nào', 'làm sao', 'cách nào', 'gì', 'nào', 'chỗ nào',
+                          'ở chỗ nào', 'tại đâu']
+        q_count = sum(1 for s in question_sentences
+                      if any(w in s for w in question_words))
+        if q_count >= 2:
+            return True
+    return False
+
 # New modules
 try:
    
@@ -32,6 +60,9 @@ logger = logging.getLogger(__name__)
 
 
 class ChatbotPipeline:
+    # Class-level reference to module-level helper
+    _is_multi_part_question = staticmethod(_is_multi_part_question)
+    
     def __init__(
         self,
         neo4j_driver,
@@ -179,11 +210,60 @@ class ChatbotPipeline:
             context = decision.top_result.context if decision.top_result else None
             
             # Collect all contexts from top results for LLM synthesis
+            # FIX: Filter by similarity threshold to only include relevant contexts
+            # This improves Context Precision by not passing irrelevant contexts
+            # V2: Tighter filtering + adaptive threshold based on score distribution
             all_contexts = []
             if ranking_output.results:
-                for result in ranking_output.results[:3]:  # Top 3 results (reduced from 5 for speed)
-                    if result.context:
+                top_sim = ranking_output.results[0].similarity_score if ranking_output.results else 0
+                
+                # Detect multi-part question to adjust filtering
+                is_multi_part = self._is_multi_part_question(user_message)
+                
+                # Adaptive threshold: tighter when top result is very confident
+                # - Top sim >= 0.90: threshold = 0.82 (very selective)
+                # - Top sim >= 0.80: threshold = 0.78  
+                # - Top sim < 0.80:  threshold = 0.73 (more inclusive for harder queries)
+                if top_sim >= 0.90:
+                    sim_threshold = max(0.82, top_sim * 0.85)
+                elif top_sim >= 0.80:
+                    sim_threshold = max(0.78, top_sim * 0.82)
+                else:
+                    sim_threshold = max(0.73, top_sim * 0.80)
+                
+                # CRITICAL: Multi-part questions need MORE contexts
+                # Lower threshold to include contexts for all question parts
+                if is_multi_part:
+                    sim_threshold = min(sim_threshold, max(0.70, top_sim * 0.75))
+                    logger.info(f"Multi-part question: lowered threshold to {sim_threshold:.3f}")
+                
+                for result in ranking_output.results[:5]:  # Consider top 5 but filter
+                    if result.context and result.similarity_score >= sim_threshold:
                         all_contexts.append(result.context)
+                
+                # Always include at least the top result
+                if not all_contexts and ranking_output.results[0].context:
+                    all_contexts.append(ranking_output.results[0].context)
+                
+                # Multi-part: include more contexts (up to 5), single: limit to 3
+                max_contexts = 5 if is_multi_part else 3
+                all_contexts = all_contexts[:max_contexts]
+                
+                # CRITICAL: Deduplicate contexts by answer_content
+                # Different providers (VnEdu, SSC, DTSoft) often have identical answers
+                # This wastes LLM context slots and pushes unique answers (like guides) out
+                seen_content = set()
+                unique_contexts = []
+                for ctx in all_contexts:
+                    content_key = (ctx.answer_content or '').strip()[:100]
+                    if content_key not in seen_content:
+                        seen_content.add(content_key)
+                        unique_contexts.append(ctx)
+                if len(unique_contexts) < len(all_contexts):
+                    logger.info(f"Deduplicated contexts: {len(all_contexts)} -> {len(unique_contexts)}")
+                all_contexts = unique_contexts
+                
+                logger.info(f"Filtered contexts: {len(all_contexts)} (threshold={sim_threshold:.3f}, multi_part={is_multi_part})")
             
             response = self.response_generator.generate(
                 decision, context, user_message, 
