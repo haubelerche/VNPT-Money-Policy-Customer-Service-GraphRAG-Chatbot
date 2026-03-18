@@ -1523,39 +1523,12 @@ Script này thực hiện các bước:
 ```bash
 conda activate vnpt-chatbot
 chainlit run src/app.py -w
-```
-
-- Cờ `-w` bật chế độ watch — tự động reload khi thay đổi code.
-- Ứng dụng khởi chạy tại: **http://localhost:8000**
-
 
 
 **Prometheus và Grafana (đã chạy sẵn từ Docker Compose):**
 
-Nếu đã chạy `docker-compose up -d` ở bước 8.4, Prometheus và Grafana đã tự động khởi chạy. Prometheus được cấu hình sẵn để scrape metrics từ `host.docker.internal:8001` (file `monitoring/prometheus.yml`).
 
-**Kiểm tra monitoring:**
-
-| Service | URL | Kiểm tra |
-|---------|-----|----------|
-| **Prometheus** | `http://localhost:9090` | Vào Status → Targets, xác nhận target `vnpt-chatbot` có trạng thái `UP` |
-| **Grafana** | `http://localhost:3000` | Đăng nhập (mặc định: `admin` / `admin123`), xem dashboard |
-
-
-### 8.8 Kiểm tra hệ thống hoạt động
-
-Sau khi khởi chạy, thực hiện các bước kiểm tra:
-
-| Bước | Hành động | Kết quả mong đợi |
-|------|-----------|-------------------|
-| 1 | Mở `http://localhost:8000` | Giao diện chat Chainlit hiển thị |
-| 2 | Gửi: "Hướng dẫn chuyển tiền Mobile Money..." | Nhận câu trả lời hướng dẫn chi tiết |
-| 3 | Gửi: "abc xyz 123" | Nhận mẫu chuyển tổng đài (escalation) |
-| 4 | Mở `http://localhost:7474` | Neo4j Browser — chạy `MATCH (n) RETURN count(n)` để xác nhận có dữ liệu |
-
-
-
-### 8.9 Khác
+### 8.8 Khác
 
 ```bash
 # Xem logs của services
