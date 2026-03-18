@@ -111,19 +111,6 @@ Script tạo graph nodes/relationships, tạo vector embeddings và Neo4j vector
 chainlit run src/app.py -w
 ```
 
-Ứng dụng chạy tại **http://localhost:8000**
-
----
-
-## Kiểm tra nhanh
-
-| Hành động | Kết quả mong đợi |
-|-----------|-----------------|
-| Gửi: *"Hướng dẫn chuyển tiền Mobile Money"* | Câu trả lời chi tiết từ knowledge base |
-| Gửi: *"abc xyz 123"* | Escalation → gợi ý số tổng đài |
-| `http://localhost:7474` → `MATCH (n) RETURN count(n)` | Trả về số node đã nạp |
-| `http://localhost:3000` | Grafana dashboard (admin / admin123) |
-
 ---
 
 ## Other Commands
