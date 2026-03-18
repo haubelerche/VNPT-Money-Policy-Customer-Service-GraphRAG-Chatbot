@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 pipeline: ChatbotPipeline = None
 last_responses = {}
 
-
 def _reset_metrics():
     """Reset metrics khi khởi động để không có data cũ."""
     try:
@@ -38,6 +37,7 @@ def _reset_metrics():
         # Reset active sessions (clear set + gauge)
         r.delete("metrics:active_session_ids")
         r.set("metrics:gauge:active_sessions", 0)
+        r.set("metrics:gauge:concurrent_users", 0)
         # Reset decision counters
         for decision in ["direct_answer", "answer_with_clarify", "clarify_required", "escalate_low_confidence", "escalate_out_of_domain"]:
             r.set(f"metrics:counter:decision_{decision}", 0)
@@ -51,9 +51,8 @@ def _reset_metrics():
     except Exception as e:
         logger.warning(f"Không thể reset metrics: {e}")
 
-
-
-
+if os.getenv("ENABLE_MONITORING", "false").lower() == "true":
+    _reset_metrics()
 
 def get_pipeline() -> ChatbotPipeline:
     global pipeline
@@ -88,8 +87,6 @@ def get_pipeline() -> ChatbotPipeline:
         logger.info("Pipeline đã sẵn sàng")
         if enable_monitoring:
             logger.info("Monitoring: ENABLED")
-            # Reset metrics khi khởi động
-            _reset_metrics()
     
     return pipeline
 
@@ -109,6 +106,7 @@ async def on_chat_start():
         # Cập nhật gauge cho Prometheus/Grafana
         active_count = r.scard("metrics:active_session_ids")
         r.set("metrics:gauge:active_sessions", active_count)
+        r.set("metrics:gauge:concurrent_users", active_count)
         logger.info(f"Active sessions: {active_count} (added {session_id})")
     except Exception as e:
         logger.warning(f"Không thể cập nhật active_sessions: {e}")
@@ -271,6 +269,7 @@ async def on_chat_end():
             r.srem("metrics:active_session_ids", session_id)
             active_count = r.scard("metrics:active_session_ids")
             r.set("metrics:gauge:active_sessions", active_count)
+            r.set("metrics:gauge:concurrent_users", active_count)
             logger.info(f"Active sessions: {active_count} (removed {session_id})")
             
             logger.info(f"Kết thúc phiên: {session_id}")

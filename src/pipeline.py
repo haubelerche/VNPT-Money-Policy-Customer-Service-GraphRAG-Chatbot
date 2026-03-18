@@ -123,19 +123,9 @@ class ChatbotPipeline:
         user_message: str,
         session_id: str
     ) -> FormattedResponse:
-        """
-        Process a user message through the full pipeline.
+       
+        start_time = time.time() #grafana bắt đầu tính giờ của phiên
         
-        Args:
-            user_message: User's input message
-            session_id: Session identifier
-            
-        Returns:
-            FormattedResponse with answer and metadata
-        """
-        start_time = time.time()
-        
-        # Initialize log entry
         log_entry = self._init_log_entry(session_id, user_message)
         
         try:
@@ -308,7 +298,7 @@ class ChatbotPipeline:
                 decision_type=DecisionType.ESCALATE_LOW_CONFIDENCE
             )
     
-    def _handle_early_exit(
+    def _handle_early_exit(  #dẹp luôn câu hỏi ngoài phạm vi
         self,
         query: StructuredQueryObject,
         log_entry: InteractionLog,
